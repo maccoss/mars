@@ -58,8 +58,7 @@ Use a CSV file created using this [Skyline report](Skyline-PRISM-Report/Skyline-
 mars calibrate \
   --mzML data.mzML \
   --prism-csv prism_report.csv \
-  --tolerance 0.2 \
-  --min-intensity 500 \
+  --tolerance 0.3 \
   --max-isolation-window 5.0 \
   --output-dir output/
 ```
@@ -291,3 +290,4 @@ matches = match_library_to_spectra(library, spectra, mz_tolerance=0.2, min_inten
 ## License
 
 MIT
+
