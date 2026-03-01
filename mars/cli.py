@@ -73,7 +73,7 @@ def find_mzml_files(
 
 
 @click.group()
-@click.version_option(version="0.1.4", prog_name="mars")
+@click.version_option(version="0.1.5", prog_name="mars")
 def main():
     """Mars: Mass Accuracy Recalibration System for Thermo Stellar DIA data."""
     pass
