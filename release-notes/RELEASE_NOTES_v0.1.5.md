@@ -16,7 +16,7 @@ This release includes bug fixes and improvements.
 
 ## Changes
 
-(No changes yet)
+- Changed default `--tolerance` from 0.7 Th to 0.3 Th. The wider tolerance caused many isotope peaks from doubly charged fragments to be included in matching.
 
 ## Compatibility
 

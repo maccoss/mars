@@ -141,7 +141,7 @@ This is useful when:
 | `--library` | - | Path to spectral library: blib file or DIA-NN `report-lib.parquet` |
 | `--prism-csv` | - | PRISM Skyline CSV with Start/End Time columns |
 | `--diann-report` | - | Path to DIA-NN `report.parquet` (auto-detected if in same dir as library) |
-| `--tolerance` | 0.7 | m/z tolerance for matching (Th), ignored if `--tolerance-ppm` is set |
+| `--tolerance` | 0.3 | m/z tolerance for matching (Th), ignored if `--tolerance-ppm` is set |
 | `--tolerance-ppm` | - | m/z tolerance for matching in ppm (e.g., 10 for Astral), overrides `--tolerance` |
 | `--min-intensity` | 500 | Minimum peak intensity for matching |
 | `--max-isolation-window` | - | Maximum isolation window width (m/z) to include |

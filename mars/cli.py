@@ -108,7 +108,7 @@ def main():
 @click.option(
     "--tolerance",
     type=float,
-    default=0.7,
+    default=0.3,
     show_default=True,
     help="m/z tolerance for fragment matching in Th (ignored if --tolerance-ppm is set)",
 )
@@ -401,7 +401,7 @@ def calibrate(
 @click.option(
     "--tolerance",
     type=float,
-    default=0.7,
+    default=0.3,
     show_default=True,
     help="m/z tolerance for fragment matching in Th (ignored if --tolerance-ppm is set)",
 )

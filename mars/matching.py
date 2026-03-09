@@ -278,7 +278,7 @@ def update_library_rt_ranges(
 def match_library_to_spectra(
     library: list[LibraryEntry],
     spectra: Iterator[DIASpectrum],
-    mz_tolerance: float = 0.7,
+    mz_tolerance: float = 0.3,
     min_intensity: float = 500.0,
     min_rt: float | None = None,
     max_rt: float | None = None,
@@ -301,7 +301,7 @@ def match_library_to_spectra(
     Args:
         library: List of LibraryEntry objects with expected fragments
         spectra: Iterator of DIASpectrum objects from mzML
-        mz_tolerance: Maximum delta m/z for matching in Th (default: ±0.7 Th)
+        mz_tolerance: Maximum delta m/z for matching in Th (default: ±0.3 Th)
                      Ignored if tolerance_ppm is specified.
         min_intensity: Minimum observed intensity to use (default: 500)
         min_rt: Minimum RT to process (minutes)
