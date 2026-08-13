@@ -1,5 +1,7 @@
 """Tests for mars mzml module."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -8,6 +10,7 @@ from mars.mzml import (
     _extract_isolation_window,
     _parse_iso8601_timestamp,
     DIASpectrum,
+    write_calibrated_mzml,
 )
 
 
@@ -146,3 +149,124 @@ class TestDIASpectrum:
         assert spectrum.injection_time is None
         assert spectrum.acquisition_start_time is None
         assert spectrum.absolute_time is None
+
+
+def _build_indexed_mzml(path):
+    """Write a minimal indexed mzML (1 MS1 + 1 MS2) with correct byte offsets."""
+    import base64
+    import hashlib
+
+    def binary_arrays(mzs, ints):
+        out = ""
+        for name, acc, arr in (
+            ("m/z array", "MS:1000514", mzs),
+            ("intensity array", "MS:1000515", ints),
+        ):
+            enc = base64.b64encode(np.asarray(arr, dtype=np.float64).tobytes()).decode("ascii")
+            out += (
+                f'<binaryDataArray encodedLength="{len(enc)}">'
+                '<cvParam cvRef="MS" accession="MS:1000523" name="64-bit float" value=""/>'
+                '<cvParam cvRef="MS" accession="MS:1000576" name="no compression" value=""/>'
+                f'<cvParam cvRef="MS" accession="{acc}" name="{name}" value=""/>'
+                f"<binary>{enc}</binary></binaryDataArray>\n"
+            )
+        return out
+
+    ms1 = (
+        '<spectrum index="0" id="controllerType=0 controllerNumber=1 scan=1" defaultArrayLength="3">\n'
+        '<cvParam cvRef="MS" accession="MS:1000511" name="ms level" value="1"/>\n'
+        '<cvParam cvRef="MS" accession="MS:1000285" name="total ion current" value="100.0"/>\n'
+        '<scanList count="1"><scan><cvParam cvRef="MS" accession="MS:1000016" '
+        'name="scan start time" value="1.0" unitAccession="UO:0000031" unitName="minute"/></scan></scanList>\n'
+        f'<binaryDataArrayList count="2">\n{binary_arrays([100.0, 200.0, 300.0], [1.0, 2.0, 3.0])}'
+        "</binaryDataArrayList>\n</spectrum>\n"
+    )
+    ms2 = (
+        '<spectrum index="1" id="controllerType=0 controllerNumber=1 scan=2" defaultArrayLength="3">\n'
+        '<cvParam cvRef="MS" accession="MS:1000511" name="ms level" value="2"/>\n'
+        '<cvParam cvRef="MS" accession="MS:1000285" name="total ion current" value="200.0"/>\n'
+        '<scanList count="1"><scan><cvParam cvRef="MS" accession="MS:1000016" '
+        'name="scan start time" value="1.1" unitAccession="UO:0000031" unitName="minute"/></scan></scanList>\n'
+        '<precursorList count="1"><precursor><isolationWindow>'
+        '<cvParam cvRef="MS" accession="MS:1000827" name="isolation window target m/z" value="450.0"/>'
+        '<cvParam cvRef="MS" accession="MS:1000828" name="isolation window lower offset" value="0.5"/>'
+        '<cvParam cvRef="MS" accession="MS:1000829" name="isolation window upper offset" value="0.5"/>'
+        "</isolationWindow></precursor></precursorList>\n"
+        f'<binaryDataArrayList count="2">\n{binary_arrays([110.0, 220.0, 330.0], [4.0, 5.0, 6.0])}'
+        "</binaryDataArrayList>\n</spectrum>\n"
+    )
+
+    header = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<indexedmzML xmlns="http://psi.hupo.org/ms/mzml">\n'
+    )
+    body = (
+        '<mzML xmlns="http://psi.hupo.org/ms/mzml" id="test" version="1.1.0">\n'
+        '<cvList count="1"><cv id="MS" fullName="PSI-MS" version="4.1.0" URI="https://example.org/psi-ms.obo"/></cvList>\n'
+        '<run id="r1" startTimeStamp="2026-08-12T10:00:00Z">\n'
+        f'<spectrumList count="2" defaultDataProcessingRef="dp1">\n{ms1}{ms2}</spectrumList>\n'
+        "</run>\n</mzML>\n"
+    )
+    main = header + body
+    main_bytes = main.encode("utf-8")
+
+    offsets = [
+        (m.group(1).decode(), m.start())
+        for m in re.finditer(rb'<spectrum[^>]+id="([^"]+)"', main_bytes)
+    ]
+    index_xml = '<indexList count="1">\n<index name="spectrum">\n'
+    index_xml += "".join(f'<offset idRef="{i}">{o}</offset>\n' for i, o in offsets)
+    index_xml += "</index>\n</indexList>\n"
+    offset_line = f"<indexListOffset>{len(main_bytes)}</indexListOffset>\n"
+    sha1 = hashlib.sha1(main_bytes + index_xml.encode() + offset_line.encode()).hexdigest()
+
+    path.write_bytes(
+        (main + index_xml + offset_line + f"<fileChecksum>{sha1}</fileChecksum>\n</indexedmzML>").encode("utf-8")
+    )
+
+
+class TestWriteCalibratedMzML:
+    """Regression tests for index integrity of the written mzML."""
+
+    def test_index_offsets_are_valid_byte_positions(self, tmp_path):
+        """Offsets must be byte positions into the file as actually written.
+
+        Regression: writing in text mode on Windows translated every '\n' to
+        '\r\n' after the offsets had been computed, shifting each one by the
+        number of preceding lines and breaking readers (DIA-NN/Carafe/pwiz
+        failed with "parseOffset() 4: Syntax error parsing XML").
+        """
+        src = tmp_path / "in.mzML"
+        dst = tmp_path / "out.mzML"
+        _build_indexed_mzml(src)
+
+        write_calibrated_mzml(src, dst, lambda meta, mz, inten: mz + 0.01)
+
+        data = dst.read_bytes()
+        assert b"\r\n" not in data, "output must not contain CRLF; it invalidates the index"
+
+        ilo = int(re.search(rb"<indexListOffset>(\d+)</indexListOffset>", data).group(1))
+        assert data[ilo:].lstrip().startswith(b"<indexList"), "indexListOffset must point at <indexList"
+
+        found = re.findall(rb'<offset idRef="([^"]+)">(\d+)</offset>', data[ilo:])
+        assert len(found) == 2
+        for id_ref, offset in found:
+            assert data[int(offset):].startswith(b"<spectrum "), (
+                f"offset for {id_ref.decode()} does not land on a <spectrum> tag"
+            )
+
+    def test_written_file_is_readable_by_pyteomics(self, tmp_path):
+        """The regenerated index must support random access, not just iteration."""
+        from pyteomics import mzml as pyt_mzml
+
+        src = tmp_path / "in.mzML"
+        dst = tmp_path / "out.mzML"
+        _build_indexed_mzml(src)
+
+        write_calibrated_mzml(src, dst, lambda meta, mz, inten: mz + 0.01)
+
+        with pyt_mzml.MzML(str(dst), use_index=True) as reader:
+            spec = reader.get_by_id("controllerType=0 controllerNumber=1 scan=2")
+        assert spec["ms level"] == 2
+        # MS2 m/z values were shifted by the calibration function
+        np.testing.assert_allclose(spec["m/z array"], [110.01, 220.01, 330.01])

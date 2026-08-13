@@ -537,8 +537,11 @@ def write_calibrated_mzml(
         modified_content + index_xml + offset_line + f"  <fileChecksum>{sha1}</fileChecksum>\n</indexedmzML>"
     )
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(final_content)
+    # Write in binary mode: the index offsets above are byte positions into the
+    # UTF-8/LF stream, so newline translation (CRLF on Windows) would shift every
+    # offset by the number of preceding lines and corrupt the index.
+    with open(output_path, "wb") as f:
+        f.write(final_content.encode("utf-8"))
 
     logger.info(f"Wrote {len(spectrum_offsets)} spectra ({n_calibrated} MS2 calibrated)")
 
