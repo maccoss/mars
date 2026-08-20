@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>MARS.IO</RootNamespace>
+    <AssemblyName>MARS.IO</AssemblyName>
+    <Description>mzML passthrough reader/writer and spectral library readers for MARS.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Parquet.Net" Version="5.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MARS.Test" />
+  </ItemGroup>
+
+</Project>

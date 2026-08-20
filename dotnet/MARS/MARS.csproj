@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MARS.Cli</RootNamespace>
+    <AssemblyName>mars</AssemblyName>
+    <RollForward>Major</RollForward>
+    <Description>MARS (Mass Accuracy Recalibration System) command line tool.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
+    <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
+  </ItemGroup>
+
+</Project>
