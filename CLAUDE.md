@@ -36,11 +36,32 @@ The repository uses GitHub Actions for CI/CD, defined in `.github/workflows/`.
 
 ## Release Notes
 
-When making bug fixes or improvements during development:
+There are two independent release tracks, Python and C# (.NET), each with its own rolling
+draft. `release-notes/README.md` is the authoritative process; the short version:
 
-*   **Update the current release notes:** Add any fixes or changes to the current version's release notes file in `release-notes/` (e.g., `RELEASE_NOTES_v0.1.4.md`).
-*   **Be specific:** Document what was fixed and why.
-*   **Group related changes:** Use appropriate sections (Bug Fixes, Changes, New Features, etc.).
+*   **Append to the `-next` draft for the track you changed:** `RELEASE_NOTES_next.md` for
+    Python, `RELEASE_NOTES_dotnet-next.md` for C#. A change affecting both gets an entry in
+    both, written for that track's users.
+*   **Never edit a released notes file.** Versioned files record what shipped.
+*   **Be specific:** what was fixed and why, with numbers where they exist.
+*   **Group related changes:** New Features, Bug Fixes, Performance, Breaking Changes.
+*   **Flag anything that changes written output.** Corrected mzML files may already be in
+    downstream pipelines.
+
+## Documentation
+
+*   `docs/` holds the algorithm description, library guidance, the mzML passthrough
+    contract, and the port specification. Update these when behavior changes, not just the
+    code comments.
+*   `README.md` documents the C# implementation; `README-python.md` documents the Python
+    one. Keep the split - the top-level README is what a new user reads first.
+
+## The two implementations
+
+The Python implementation is **frozen**: bug fixes only, no new features, per the port
+specification. The C# implementation under `dotnet/` is where new work goes. Do not port a
+Python quirk into C# without checking `docs/dotnet-port-spec.md` section 10a first - four
+of them are known defects that C# deliberately does not reproduce.
 
 ## Style Guidelines
 
