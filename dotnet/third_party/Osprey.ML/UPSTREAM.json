@@ -9,7 +9,7 @@
   ],
   "repository": "https://github.com/ProteoWizard/pwiz",
   "branch": "Skyline/work/20260819_osprey_gbt_regression",
-  "commit": "4c83c8aac64a80612ebb3e2c282a282d59039dd5",
+  "commit": "6efbc3ea5d8f7f2c426bedd14fcf92d83fd7a8a7",
   "commitSubject": "Addressed code review feedback on PR #4595",
   "pullRequest": "https://github.com/ProteoWizard/pwiz/issues/4592",
   "syncedOn": "2026-08-20",

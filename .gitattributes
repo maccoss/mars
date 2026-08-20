@@ -1,0 +1,6 @@
+# Vendored Osprey.ML sources are byte-for-byte copies of their upstream in pwiz, CRLF
+# line endings included, and MARS.Test hashes them against UPSTREAM.json to turn an
+# accidental local edit into a test failure. Git's autocrlf translation would make that
+# hash platform-dependent - passing on Windows, failing on Linux CI - so these files must
+# never be translated. Treat them as opaque bytes.
+dotnet/third_party/** -text
