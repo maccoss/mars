@@ -1,0 +1,198 @@
+name: .NET Release
+
+# Pushing a dotnet-v* tag builds every platform artifact and creates the GitHub Release.
+# Do not hand-create the Release: the notes file is published verbatim as the body, and
+# this workflow is what guarantees the tag, the assembly version and the notes agree.
+on:
+  push:
+    tags:
+      - 'dotnet-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the dotnet-v prefix (e.g. 26.1.0). Builds artifacts only, creates no Release.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # Fail before spending twenty minutes on artifacts if the release is not consistent.
+  # Catching this after the builds have run is the failure mode the process doc warns about.
+  preflight:
+    name: Check version and notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#dotnet-v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=dotnet-v$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing version $version"
+
+      - name: Assembly version must match the tag
+        run: |
+          version="${{ steps.resolve.outputs.version }}"
+          declared=$(grep -oPm1 '(?<=<Version>)[^<]+' dotnet/Directory.Build.props)
+          echo "tag says      $version"
+          echo "csproj says   $declared"
+          if [ "$declared" != "$version" ]; then
+            echo "::error::dotnet/Directory.Build.props declares <Version>$declared</Version> but the tag says $version. Bump it and re-tag."
+            exit 1
+          fi
+
+      - name: Release notes must exist
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          notes="release-notes/RELEASE_NOTES_${{ steps.resolve.outputs.tag }}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing. Rename RELEASE_NOTES_dotnet-next.md to it before tagging; it is published verbatim as the Release description."
+            exit 1
+          fi
+          # A renamed draft always arrives carrying the headings nobody filled in, and this
+          # file is published verbatim as the Release description.
+          empty=$(awk '
+            /^## / { if (heading != "" && count == 0) print heading; heading=$0; count=0; next }
+            NF { count++ }
+            END { if (heading != "" && count == 0) print heading }' "$notes")
+          if [ -n "$empty" ]; then
+            echo "::error::$notes has section headings with nothing under them:"
+            echo "$empty"
+            echo "Delete them before tagging - this file is the Release description."
+            exit 1
+          fi
+          echo "Release notes look complete."
+
+  build:
+    name: ${{ matrix.rid }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each artifact is built on its own platform where a runner exists, so the
+          # smoke test below exercises the binary that actually ships rather than a
+          # cross-compiled stand-in.
+          - { os: windows-latest, rid: win-x64,     archive: zip }
+          - { os: ubuntu-latest,  rid: linux-x64,   archive: tar }
+          - { os: macos-latest,   rid: osx-arm64,   archive: tar }
+          - { os: macos-13,       rid: osx-x64,     archive: tar }
+          # No hosted arm64 runner in the standard pool for either of these, so they are
+          # cross-compiled and NOT smoke tested. GitHub's windows-11-arm runner can be
+          # swapped in for win-arm64 if it becomes available to this repository.
+          - { os: windows-latest, rid: win-arm64,   archive: zip, cross: true }
+          - { os: ubuntu-latest,  rid: linux-arm64, archive: tar, cross: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        working-directory: dotnet
+        run: >
+          dotnet publish MARS/MARS.csproj
+          -c Release -f net8.0 -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:DebugType=none
+          -o publish/${{ matrix.rid }}
+
+      # Parquet.Net carries a native compression library, so the archive is a binary plus
+      # that library rather than a lone executable.
+      - name: List payload
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        shell: bash
+        run: ls -la
+
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then bin=./mars.exe; else bin=./mars; chmod +x "$bin"; fi
+          "$bin" --version
+          # --version alone would pass on a binary whose dependencies are broken, because
+          # it never touches them. Run a command that opens a file and does real work.
+          "$bin" verify --help > /dev/null
+          "$bin" qc --help > /dev/null
+          echo "Smoke test passed on ${{ matrix.rid }}"
+
+      - name: Archive (tar.gz)
+        if: matrix.archive == 'tar'
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        run: |
+          chmod +x mars
+          tar czf "../../../mars-${{ needs.preflight.outputs.version }}-${{ matrix.rid }}.tar.gz" .
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        shell: pwsh
+        run: |
+          Compress-Archive -Path * -DestinationPath "$env:GITHUB_WORKSPACE/mars-${{ needs.preflight.outputs.version }}-${{ matrix.rid }}.zip"
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          f=$(ls mars-${{ needs.preflight.outputs.version }}-${{ matrix.rid }}.*)
+          if command -v sha256sum > /dev/null; then sha256sum "$f" > "$f.sha256"; else shasum -a 256 "$f" > "$f.sha256"; fi
+          cat "$f.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mars-${{ matrix.rid }}
+          path: |
+            mars-*.tar.gz
+            mars-*.zip
+            mars-*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [preflight, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect checksums
+        run: |
+          cd artifacts
+          ls -la
+          cat *.sha256 > SHA256SUMS.txt
+          rm -f *.sha256
+          cat SHA256SUMS.txt
+
+      # The notes file is the Release body, verbatim. Preflight has already confirmed it
+      # exists and carries no empty headings.
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MARS .NET ${{ needs.preflight.outputs.version }}
+          body_path: release-notes/RELEASE_NOTES_${{ needs.preflight.outputs.tag }}.md
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: true

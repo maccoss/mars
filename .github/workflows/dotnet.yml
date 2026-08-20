@@ -1,0 +1,182 @@
+name: .NET
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dotnet/**'
+      - '.github/workflows/dotnet.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dotnet/**'
+      - '.github/workflows/dotnet.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        working-directory: dotnet
+        run: dotnet restore
+
+      - name: Build
+        working-directory: dotnet
+        run: dotnet build --no-restore -c Release -warnaserror
+
+      - name: Test
+        working-directory: dotnet
+        run: dotnet test --no-build -c Release --logger "console;verbosity=normal"
+
+  # Produces the same artifacts a release would, on every push and pull request, so a
+  # build is downloadable without cutting a release and so packaging breaks surface here
+  # rather than at tag time.
+  package:
+    name: Package ${{ matrix.rid }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,     archive: zip }
+          - { os: ubuntu-latest,  rid: linux-x64,   archive: tar }
+          - { os: macos-latest,   rid: osx-arm64,   archive: tar }
+          - { os: macos-13,       rid: osx-x64,     archive: tar }
+          # No hosted arm64 runner in the standard pool for either of these, so they are
+          # cross-compiled and NOT smoke tested. GitHub's windows-11-arm runner can be
+          # swapped in for win-arm64 if it becomes available to this repository.
+          - { os: windows-latest, rid: win-arm64,   archive: zip, cross: true }
+          - { os: ubuntu-latest,  rid: linux-arm64, archive: tar, cross: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained
+        working-directory: dotnet
+        run: >
+          dotnet publish MARS/MARS.csproj
+          -c Release -f net8.0 -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:DebugType=none
+          -o publish/${{ matrix.rid }}
+
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then bin=./mars.exe; else bin=./mars; chmod +x "$bin"; fi
+          "$bin" --version
+          "$bin" verify --help > /dev/null
+          "$bin" qc --help > /dev/null
+
+      - name: Archive (tar.gz)
+        if: matrix.archive == 'tar'
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        run: |
+          chmod +x mars
+          tar czf "../../../mars-${{ matrix.rid }}.tar.gz" .
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        working-directory: dotnet/publish/${{ matrix.rid }}
+        shell: pwsh
+        run: Compress-Archive -Path * -DestinationPath "$env:GITHUB_WORKSPACE/mars-${{ matrix.rid }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mars-${{ matrix.rid }}
+          path: |
+            mars-*.tar.gz
+            mars-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # MARS targets net8.0 by default, which runs unchanged on the .NET 10 runtime. Building
+  # AGAINST net10.0 is the forward-looking case the port spec asks for, and it is not
+  # verified on the developer machines, so it reports rather than gates.
+  net10:
+    name: Build and test against net10.0 (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Build
+        working-directory: dotnet
+        run: dotnet build -c Release -p:MarsTargetFrameworks="net8.0;net10.0"
+
+      - name: Test
+        working-directory: dotnet
+        run: >
+          dotnet test --no-build -c Release -f net10.0
+          -p:MarsTargetFrameworks="net8.0;net10.0"
+          --logger "console;verbosity=normal"
+
+  determinism:
+    name: Determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        working-directory: dotnet
+        run: dotnet build -c Release
+
+      # MARS writes m/z values into files that get reprocessed and compared, so identical
+      # input must give a bit-identical output at any thread count. Broken out as its own
+      # job so a failure here is unmistakable rather than one line in a long test log.
+      - name: Same input, same bytes, any thread count
+        working-directory: dotnet
+        run: dotnet test --no-build -c Release --filter "FullyQualifiedName~Deterministic"
+
+  vendor-drift:
+    name: Vendored Osprey.ML drift guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Osprey.ML owns the boosting code; MARS carries a hash-guarded copy. This fails
+      # when someone edits the copy instead of fixing it upstream in pwiz.
+      - name: Check vendored hashes
+        working-directory: dotnet
+        run: dotnet test -c Release --filter "FullyQualifiedName~VendoredOsprey"
