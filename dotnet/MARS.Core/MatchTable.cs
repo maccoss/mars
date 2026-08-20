@@ -63,6 +63,7 @@ public sealed class MatchTable
         {
             ScanNumber = new GrowableArray<int>();
             LibraryEntryIndex = new GrowableArray<int>();
+            FragmentIndex = new GrowableArray<int>();
             ObservedMz = new GrowableArray<double>();
             RetentionTime = new GrowableArray<double>();
         }
@@ -83,6 +84,11 @@ public sealed class MatchTable
     public GrowableArray<int>? ScanNumber { get; }
 
     public GrowableArray<int>? LibraryEntryIndex { get; }
+
+    /// <summary>Index into the library's flat fragment arrays, identifying which fragment
+    /// of the entry matched. With the scan number this is a unique key for a row, which is
+    /// what lets a dump be joined against another implementation's output.</summary>
+    public GrowableArray<int>? FragmentIndex { get; }
 
     public GrowableArray<double>? ObservedMz { get; }
 

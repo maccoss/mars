@@ -37,6 +37,7 @@ public static class CalibrateCommand
 
         string modelPath = args.String("model-path") ?? Path.Combine(outputDirectory, "mars_model.json");
         string reportPath = args.String("report") ?? Path.Combine(outputDirectory, "mars_qc_summary.txt");
+        string? dumpMatchesPath = args.String("dump-matches");
 
         var matchOptions = new MatchOptions
         {
@@ -75,7 +76,7 @@ public static class CalibrateCommand
         var runNames = new List<string>();
         foreach (string file in mzmlFiles) runNames.Add(Path.GetFileName(file));
 
-        SpectralLibrary library = LoadLibrary(args, runNames);
+        SpectralLibrary library = LoadLibrary(args, runNames, keepSequences: dumpMatchesPath is not null);
 
         // ---- Pass 1: match fragments across every input file -------------------------
         var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
@@ -103,7 +104,7 @@ public static class CalibrateCommand
             Log.Warn("No ion injection time in the first MS2 spectrum; the injection-time feature group is off.");
 
         MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
-        var table = new MatchTable(collect);
+        var table = new MatchTable(collect, keepDetail: dumpMatchesPath is not null);
         var matcher = new FragmentMatcher(library, matchOptions);
 
         foreach (string file in mzmlFiles)
@@ -153,6 +154,12 @@ public static class CalibrateCommand
             {
                 absoluteTimeOffset = 0;
             }
+        }
+
+        if (dumpMatchesPath is not null)
+        {
+            MatchDumpWriter.Write(dumpMatchesPath, table, library);
+            Log.Info($"Wrote {table.Count:N0} matches to {dumpMatchesPath}");
         }
 
         // ---- Train -------------------------------------------------------------------
@@ -205,7 +212,8 @@ public static class CalibrateCommand
         return Program.ExitSuccess;
     }
 
-    private static SpectralLibrary LoadLibrary(CommandLineArgs args, List<string> runNames)
+    private static SpectralLibrary LoadLibrary(
+        CommandLineArgs args, List<string> runNames, bool keepSequences)
     {
         string? prismCsv = args.String("prism-csv");
         string? libraryPath = args.String("library");
@@ -214,6 +222,10 @@ public static class CalibrateCommand
         {
             RunNames = runNames,
             DedupeFragments = !args.Flag("no-dedupe-library"),
+            // Sequences are dropped by default because a plate-scale report carries tens
+            // of millions of them. A dump is a diagnostic run, so the memory is worth the
+            // peptide identity in the output.
+            KeepSequences = keepSequences,
         };
 
         if (prismCsv is not null)
@@ -309,6 +321,9 @@ public static class CalibrateCommand
                   --output-dir <dir>     Output directory (default .)
                   --model-path <path>    Where to save the model
                   --report <path>        Where to write the QC summary
+                  --dump-matches <path>  Write every matched fragment to CSV, one row per
+                                         match, with all computed features. Diagnostic;
+                                         a large cohort produces millions of rows
                   --no-recalibrate       Train and report only; write no mzML
                   --on-reorder <mode>    clamp (default), revert, or allow, when a
                                          correction would break ascending m/z order

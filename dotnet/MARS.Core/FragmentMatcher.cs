@@ -217,6 +217,7 @@ public sealed class FragmentMatcher
                 {
                     table.ScanNumber!.Add(spectrum.ScanNumber);
                     table.LibraryEntryIndex!.Add(entry);
+                    table.FragmentIndex!.Add(f);
                     table.ObservedMz!.Add(observedMz);
                     table.RetentionTime!.Add(spectrum.RetentionTime);
                 }
