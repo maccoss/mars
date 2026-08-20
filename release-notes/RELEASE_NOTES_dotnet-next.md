@@ -32,6 +32,12 @@ cross-platform CLI with no Python installation.
   under every mode.
 - **Shared model implementation.** The gradient boosted trees come from `Osprey.ML`, so one
   boosting implementation is maintained rather than one per tool.
+- **`--dump-matches`** writes every matched fragment to CSV with all computed features, for
+  answering "which peak did MARS match, and what did it compute from it" without a
+  debugger. It is also what makes this implementation checkable against the Python one row
+  by row: across two Stellar runs, 160,947 matched fragments agree on all 24 shared columns
+  with a maximum absolute difference of zero, including the space-charge features that
+  carry the most weight in the model. See `docs/python-parity.md`.
 - **Prebuilt binaries for six platforms**, published to GitHub Releases and self-contained
   so no .NET install is needed: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
   `osx-arm64` and `osx-x64`, with `SHA256SUMS.txt`. Each is built and smoke tested on its
