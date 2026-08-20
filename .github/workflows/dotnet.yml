@@ -114,8 +114,8 @@ jobs:
           retention-days: 14
 
   # MARS targets net8.0 by default, which runs unchanged on the .NET 10 runtime. Building
-  # AGAINST net10.0 is the forward-looking case the port spec asks for, and it is not
-  # verified on the developer machines, so it reports rather than gates.
+  # AGAINST net10.0 is the forward-looking case the port spec asks for. It is not the
+  # target that ships, so it reports rather than gates.
   net10:
     name: Build and test against net10.0 (informational)
     runs-on: ubuntu-latest
@@ -131,15 +131,19 @@ jobs:
             8.0.x
             10.0.x
 
+      # A semicolon-separated list cannot be passed on the command line: the shell strips
+      # the quotes and MSBuild reads net10.0 as a second property, and escaping it as %3B
+      # instead makes MSBuild treat the whole string as one target framework.
+      # MarsIncludeNet10 selects the pair inside Directory.Build.props.
       - name: Build
         working-directory: dotnet
-        run: dotnet build -c Release -p:MarsTargetFrameworks="net8.0;net10.0"
+        run: dotnet build -c Release -p:MarsIncludeNet10=true
 
       - name: Test
         working-directory: dotnet
         run: >
           dotnet test --no-build -c Release -f net10.0
-          -p:MarsTargetFrameworks="net8.0;net10.0"
+          -p:MarsIncludeNet10=true
           --logger "console;verbosity=normal"
 
   determinism:

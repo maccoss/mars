@@ -150,9 +150,10 @@ def main() -> int:
         log.warning("Match table has no %s; those columns will be absent", ", ".join(missing))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    # repr gives round-trip precision, which is the point: a value that rounds on the way
-    # out cannot be differenced against the other implementation at m/z precision.
-    matches[columns].to_csv(args.out, index=False, float_format="%r")
+    # No float_format: pandas writes the shortest representation that round-trips, which
+    # is what a comparison at m/z precision needs. Do not be tempted by "%r" - under
+    # numpy 2 that writes "np.float64(658.3)" and the file stops being numeric.
+    matches[columns].to_csv(args.out, index=False)
     log.info("Wrote %d rows, %d columns to %s", len(matches), len(columns), args.out)
     return 0
 

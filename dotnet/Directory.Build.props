@@ -11,6 +11,13 @@
     A net8.0 assembly also executes unchanged on the .NET 9 and .NET 10 runtimes.
   -->
   <PropertyGroup>
+    <!-- Add net10.0 with -p:MarsIncludeNet10=true rather than by passing a semicolon-
+         separated list. A list cannot survive the command line: the shell eats the quotes,
+         and escaping the separator as %3B makes MSBuild treat the whole string as one
+         target framework ("The TargetFramework value 'net8.0;net10.0' is not valid").
+         MarsTargetFrameworks is still honoured for anything that sets it as a real MSBuild
+         property, where the separator is unambiguous. -->
+    <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == '' and '$(MarsIncludeNet10)' == 'true'">net8.0;net10.0</MarsTargetFrameworks>
     <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == ''">net8.0</MarsTargetFrameworks>
     <TargetFrameworks>$(MarsTargetFrameworks)</TargetFrameworks>
     <!-- Pinned rather than 'latest' so the language version does not silently track

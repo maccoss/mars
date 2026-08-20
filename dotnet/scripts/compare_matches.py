@@ -24,7 +24,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-KEY = ["scan_number", "ion_annotation", "expected_mz_key"]
+BASE_KEY = ["scan_number", "ion_annotation", "expected_mz_key"]
+
+# A handful of precursors appear in more than one block of a PRISM report, so the same
+# fragment can be matched twice in one scan through two library entries. Both
+# implementations produce those duplicates, so rather than discarding the rows, order
+# each group identically on both sides and pair them off by position. If the two ever
+# produced different multisets the surplus would show up as an unmatched row.
+TIEBREAK = ["observed_mz", "delta_mz", "observed_intensity"]
+KEY = BASE_KEY + ["occurrence"]
 
 # Per-column absolute tolerance. Most of these are computed by the same arithmetic on both
 # sides and should agree to the last bit; the tolerance exists to absorb the decimal
@@ -52,7 +60,10 @@ TOLERANCES = {
 
 
 def load(path: Path, label: str) -> pd.DataFrame:
-    frame = pd.read_csv(path)
+    # float_precision="round_trip" is not optional here. The default parser is faster and
+    # drops the last digit, which invents differences of ~1e-16 in every column and buries
+    # the real ones.
+    frame = pd.read_csv(path, float_precision="round_trip")
     if "expected_mz" not in frame.columns:
         raise SystemExit(f"{label} dump has no expected_mz column: {path}")
     # A float is a poor join key. Round to a tenth of a milli-Thomson, far finer than any
@@ -61,12 +72,19 @@ def load(path: Path, label: str) -> pd.DataFrame:
     return frame
 
 
-def drop_ambiguous(frame: pd.DataFrame, label: str) -> pd.DataFrame:
-    duplicated = frame.duplicated(subset=KEY, keep=False)
-    if duplicated.any():
-        print(f"  {label}: {duplicated.sum():,} rows share a key with another row; excluded")
-        return frame[~duplicated]
+def number_occurrences(frame: pd.DataFrame, label: str) -> pd.DataFrame:
+    """Make a repeated key unique by position within its group."""
+    duplicated = int(frame.duplicated(subset=BASE_KEY, keep=False).sum())
+    if duplicated:
+        print(f"  {label}: {duplicated:,} rows share a key; paired by position within the group")
+    frame = frame.sort_values(BASE_KEY + TIEBREAK, kind="mergesort")
+    frame["occurrence"] = frame.groupby(BASE_KEY, sort=False).cumcount()
     return frame
+
+
+def describe(value: float) -> str:
+    """Shortest round-trip form. repr() on a numpy scalar prints np.float64(...)."""
+    return "NaN" if pd.isna(value) else repr(float(value))
 
 
 def compare_column(merged: pd.DataFrame, column: str) -> dict:
@@ -110,9 +128,9 @@ def main() -> int:
     print(f"  Python {len(python):,}")
     print()
 
-    print("Ambiguous keys")
-    csharp = drop_ambiguous(csharp, "C#")
-    python = drop_ambiguous(python, "Python")
+    print("Repeated keys")
+    csharp = number_occurrences(csharp, "C#")
+    python = number_occurrences(python, "Python")
     print()
 
     merged = csharp.merge(python, on=KEY, how="inner", suffixes=("_cs", "_py"))
@@ -165,14 +183,23 @@ def main() -> int:
             continue
         left = pd.to_numeric(merged[f"{column}_cs"], errors="coerce")
         right = pd.to_numeric(merged[f"{column}_py"], errors="coerce")
-        worst = (left - right).abs().nlargest(args.examples)
-        print(f"\n  {column}, worst {len(worst)}:")
-        for index in worst.index:
+
+        # A row where only one side is NaN has no magnitude to rank by, and it is the more
+        # interesting failure - the two disagree about whether the feature is defined at
+        # all, which decides whether the row survives to training - so show those first.
+        undefined_on_one_side = left.isna() != right.isna()
+        rows = list(merged.index[undefined_on_one_side][: args.examples])
+        magnitude = (left - right).abs()
+        magnitude = magnitude[magnitude > 0]
+        rows += [i for i in magnitude.nlargest(args.examples).index if i not in rows]
+
+        print(f"\n  {column}:")
+        for index in rows:
             print(
                 f"    scan {merged.at[index, 'scan_number']} "
                 f"{merged.at[index, 'ion_annotation']} "
                 f"expected {merged.at[index, 'expected_mz_key']}: "
-                f"C# {left[index]!r} vs Python {right[index]!r}")
+                f"C# {describe(left[index])} vs Python {describe(right[index])}")
     return 1
 
 

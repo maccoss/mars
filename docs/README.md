@@ -5,6 +5,7 @@
 | [algorithm.md](algorithm.md) | The recalibration algorithm: fragment matching, the 22 features, the model, and how the correction is applied. Start here. |
 | [spectral-libraries.md](spectral-libraries.md) | The four library sources, what makes a usable one, and how to pick a tolerance. |
 | [mzml-passthrough.md](mzml-passthrough.md) | How MARS writes mzML without disturbing anything it did not mean to change. |
+| [python-parity.md](python-parity.md) | How the C# implementation is checked against the Python one row by row, what agrees, and what parity cannot cover. |
 | [dotnet-port-spec.md](dotnet-port-spec.md) | The specification governing the Python-to-C# port: decisions, acceptance gates, measured results, and four defects the port found in the Python implementation. |
 
 For installing and running MARS, see the [top-level README](../README.md). For the C#
