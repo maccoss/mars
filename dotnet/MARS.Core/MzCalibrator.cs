@@ -7,19 +7,6 @@ using pwiz.Osprey.ML;
 
 namespace MARS.Core;
 
-/// <summary>What a cross-validated fit leaves behind to apply to data.</summary>
-public enum CvModel
-{
-    /// <summary>Average the fold models. Exactly the models that were measured.</summary>
-    Ensemble,
-
-    /// <summary>
-    /// Refit one model on every row after cross-validating. Corrects at single-model speed
-    /// and sees more data than any fold model did.
-    /// </summary>
-    Refit,
-}
-
 /// <summary>
 /// Hyperparameters, transcribed from the Python MzCalibrator, which constructs
 /// xgboost.XGBRegressor(n_estimators=100, max_depth=6, learning_rate=0.1,
@@ -69,20 +56,6 @@ public sealed class CalibrationOptions
     /// </remarks>
     public int CvFolds { get; set; } = 5;
 
-    /// <summary>
-    /// Whether the model that gets applied is the fold ensemble or a single model refitted
-    /// on every row. Cross-validation runs either way, and reports the same numbers.
-    /// </summary>
-    /// <remarks>
-    /// This is a speed decision, not an accuracy one. The ensemble is what Osprey's
-    /// Percolator applies, and it is what was measured - but correcting a file scores every
-    /// peak against every fold model, so a 5-fold ensemble makes the correction pass about
-    /// five times slower, and correction dominates a calibrate run. Refitting costs one
-    /// extra training round and leaves correction at its original speed; the
-    /// cross-validated numbers then describe the procedure rather than that exact model,
-    /// which is the ordinary way cross-validation is read.
-    /// </remarks>
-    public CvModel CvModel { get; set; } = CvModel.Ensemble;
 
     /// <summary>
     /// Weight training rows by observed peak intensity, normalized to mean 1. More intense
@@ -140,17 +113,14 @@ public sealed class MzCalibrator
 {
     internal MzCalibrator(
         FeatureSet features,
-        IReadOnlyList<GradientBoostedTrees> models,
+        GradientBoostedTrees model,
         double absoluteTimeOffset,
         CalibrationOptions options,
         TrainingStatistics? statistics,
         CrossValidationReport? crossValidation)
     {
-        if (models.Count == 0)
-            throw new ArgumentException("A calibrator needs at least one model.", nameof(models));
-
         Features = features;
-        Models = models;
+        Model = model;
         AbsoluteTimeOffset = absoluteTimeOffset;
         Options = options;
         Statistics = statistics;
@@ -160,14 +130,11 @@ public sealed class MzCalibrator
     public FeatureSet Features { get; }
 
     /// <summary>
-    /// The fold models. One when a single fit was requested, otherwise one per
-    /// cross-validation fold, and a prediction is their mean.
+    /// The model. After cross-validation this is the fold models merged into one - not a
+    /// sixth model refitted on everything, but the same ensemble expressed as a single
+    /// object, predicting identically. See <see cref="EnsembleMerge"/>.
     /// </summary>
-    /// <remarks>
-    /// Trees cannot be averaged the way linear weights can, so the ensemble averages scores
-    /// rather than models - the same choice Osprey's Percolator makes on its tree path.
-    /// </remarks>
-    public IReadOnlyList<GradientBoostedTrees> Models { get; }
+    public GradientBoostedTrees Model { get; }
 
     /// <summary>Cross-validation results, or null when a single model was fitted.</summary>
     public CrossValidationReport? CrossValidation { get; }
@@ -191,14 +158,7 @@ public sealed class MzCalibrator
     public TrainingStatistics? Statistics { get; }
 
     /// <summary>Predicted mass error in Th. Subtract from the observed m/z to correct it.</summary>
-    public double PredictDelta(double[] featureRow)
-    {
-        if (Models.Count == 1) return Models[0].ScoreSingle(featureRow);
-
-        double sum = 0;
-        for (int i = 0; i < Models.Count; i++) sum += Models[i].ScoreSingle(featureRow);
-        return sum / Models.Count;
-    }
+    public double PredictDelta(double[] featureRow) => Model.ScoreSingle(featureRow);
 
     /// <summary>
     /// Predicted mass error for every row of a match table, parallel to the table's rows.
@@ -355,10 +315,9 @@ public sealed class MzCalibrator
             Gather(x, trainIndex), Gather(y, trainIndex), gbtParams,
             weights is null ? null : Gather(weights, trainIndex));
 
-        var single = new[] { model };
-        var calibrator = new MzCalibrator(features, single, absoluteTimeOffset, options, null, null);
+        var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
         TrainingStatistics statistics = calibrator.Evaluate(x, y, trainIndex, validationIndex, table.Count, options);
-        return new MzCalibrator(features, single, absoluteTimeOffset, options, statistics, null);
+        return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics, null);
     }
 
     /// <summary>
@@ -435,7 +394,12 @@ public sealed class MzCalibrator
                 $"({perFold[fold].MadReduction:F1}% reduction), r {perFold[fold].PearsonR:F4}");
         }
 
-        var ensemble = new MzCalibrator(features, models, absoluteTimeOffset, options, null, null);
+        // Merge the folds into one model. This is not a refit and not an approximation: a
+        // boosted ensemble's score is linear in its trees, so keeping every tree and dividing
+        // each leaf by the fold count reproduces the average of the fold models exactly. What
+        // gets applied is therefore precisely what was measured, as a single object.
+        GradientBoostedTrees merged = EnsembleMerge.Merge(models);
+        var ensemble = new MzCalibrator(features, merged, absoluteTimeOffset, options, null, null);
 
         var inSample = new double[x.Length];
         for (int i = 0; i < x.Length; i++) inSample[i] = ensemble.PredictDelta(x[i]);
@@ -459,15 +423,11 @@ public sealed class MzCalibrator
         TrainingStatistics statistics =
             ensemble.EvaluateCrossValidated(x, y, outOfFold, matchedRows, report, options);
 
-        if (options.CvModel == CvModel.Ensemble)
-            return new MzCalibrator(features, models, absoluteTimeOffset, options, statistics, report);
+        log?.Invoke(
+            $"  merged {options.CvFolds} fold models into one " +
+            $"({merged.ToModelData().TreeRoot.Length:N0} trees)");
 
-        // Refit on everything. The statistics stay the cross-validated ones: they describe
-        // the procedure, and this model has seen strictly more data than any fold model, so
-        // quoting the fold models' accuracy for it is the conservative reading.
-        log?.Invoke($"  refitting one model on all {x.Length:N0} rows for correction");
-        var refit = new[] { GradientBoostedTrees.Train(x, y, gbtParams, weights) };
-        return new MzCalibrator(features, refit, absoluteTimeOffset, options, statistics, report);
+        return new MzCalibrator(features, merged, absoluteTimeOffset, options, statistics, report);
     }
 
     /// <summary>
@@ -763,10 +723,7 @@ public sealed class MzCalibrator
     private int[] ComputeSplitCounts()
     {
         var counts = new int[Features.Count];
-        // Summed over the ensemble: with one model this is unchanged, and with folds it is
-        // the total number of times the feature was split on anywhere in the ensemble.
-        foreach (GradientBoostedTrees model in Models)
-        foreach (int feature in model.ToModelData().Feature)
+        foreach (int feature in Model.ToModelData().Feature)
         {
             if (feature >= 0 && feature < counts.Length) counts[feature]++;
         }

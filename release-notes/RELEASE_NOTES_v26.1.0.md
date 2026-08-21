@@ -77,11 +77,14 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   reference Stellar run that gap is 0.0015 Th, about 3% of the error being corrected, so the
   model generalizes rather than memorizes. `--cv-folds 0` restores a single fit; the held-out
   split in that mode is now also by peptide.
-- **The applied model is the ensemble of the folds**, averaging their predictions, which is
-  what Osprey's Percolator applies on its tree path. `--cv-model refit` instead fits one
-  model on all rows after cross-validating, which corrects about five times faster: on one
-  1.47 GB file, 266 s for the ensemble against 91 s for the refit and 52 s for a single fit.
-  All three report the same accuracy; only the last reports it optimistically.
+- **The fold models are merged into a single model**, which predicts exactly what averaging
+  them would. A boosted ensemble's score is linear in its trees, so keeping every tree and
+  dividing each leaf value by the fold count reproduces the average to the last bit - not an
+  approximation, and not a refit on data that was held out. What ships is the ensemble that
+  was measured, written as one object. It carries five times the trees, so correcting is
+  about five times slower than a single fit: 266 s against 52 s on one 1.47 GB file, of
+  which only 16 s is the extra training. `--cv-folds 0` trains a single model instead, at
+  the cost of an in-sample accuracy figure rather than an honest one.
 - **The QC report shows how much the folds disagree.** A per-fold table with a spread
   row, two figures plotting each fold's accuracy against the pooled figure with a
   one-standard-deviation band, and a plain-language reading of both the spread and the
@@ -135,9 +138,9 @@ Measured on 16 logical cores.
 
 ## Breaking Changes
 
-- **Model files now carry an ensemble.** The format is version 2: `models` replaces the
-  single `model`, one entry per fold. Version 1 files still load, as a one-element
-  ensemble, and predict identically. A five-fold model file is about five times larger.
+- **Model files are format version 2**, adding the cross-validation summary. The model is
+  still a single object, so version 1 files load unchanged. A cross-validated model file is
+  about five times larger, because the merged model holds every fold's trees.
 - **Model files are not interchangeable with the Python implementation.** The Python model
   is a pickle of an XGBoost booster; the C# model is versioned JSON. Retrain rather than
   convert.

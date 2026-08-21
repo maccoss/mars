@@ -89,7 +89,7 @@ public static class QcReport
         text.AppendLine($"Training samples:  {stats.RowsUsed:N0}");
         text.AppendLine(calibrator.CrossValidation is null
             ? $"Train/Val split:   {stats.RowsTrain:N0} / {stats.RowsValidation:N0}"
-            : $"Models:            {calibrator.Models.Count} fold models, averaged");
+            : $"Model:             {calibrator.CrossValidation.Folds} fold models merged into one");
         text.AppendLine($"Spectra examined:  {matchStatistics.SpectraSeen:N0}");
         text.AppendLine($"Library precursors matched: {matchStatistics.UniqueEntriesMatched:N0}");
         text.AppendLine();

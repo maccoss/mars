@@ -229,8 +229,6 @@ public sealed class CrossValidatedFitTest
             BuildMatches(), new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 500 },
             absoluteTimeOffset: 0);
 
-        Assert.Equal(5, calibrator.Models.Count);
-
         CrossValidationReport cv = calibrator.CrossValidation!;
         Assert.Equal(5, cv.Folds);
         Assert.Equal(200, cv.Groups);
@@ -268,26 +266,26 @@ public sealed class CrossValidatedFitTest
             BuildMatches(), new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 500 },
             absoluteTimeOffset: 0);
 
-        Assert.Single(calibrator.Models);
         Assert.Null(calibrator.CrossValidation);
         Assert.NotNull(calibrator.Statistics);
     }
 
     [Fact]
-    public void EnsemblePredictionIsTheMeanOfTheFoldModels()
+    public void TheAppliedModelCarriesEveryFoldsTrees()
     {
-        MzCalibrator calibrator = MzCalibrator.Fit(
-            BuildMatches(), new CalibrationOptions { CvFolds = 3, ImportanceSampleRows = 500 },
+        MzCalibrator folded = MzCalibrator.Fit(
+            BuildMatches(), new CalibrationOptions { CvFolds = 5, NEstimators = 20, ImportanceSampleRows = 0 },
             absoluteTimeOffset: 0);
 
-        var row = new double[calibrator.Features.Count];
-        row[calibrator.Features.SlotOf(MarsFeature.PrecursorMz)] = 405.0;
-        row[calibrator.Features.SlotOf(MarsFeature.FragmentMz)] = 650.0;
-        row[calibrator.Features.SlotOf(MarsFeature.LogTic)] = 6.0;
-        row[calibrator.Features.SlotOf(MarsFeature.LogIntensity)] = 4.0;
+        MzCalibrator single = MzCalibrator.Fit(
+            BuildMatches(), new CalibrationOptions { CvFolds = 0, NEstimators = 20, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
 
-        double mean = calibrator.Models.Sum(m => m.ScoreSingle(row)) / calibrator.Models.Count;
-        Assert.Equal(mean, calibrator.PredictDelta(row), 12);
+        // The merged model holds all five folds' trees, which is why it predicts what
+        // averaging them would - and why it costs five times as much to score.
+        Assert.Equal(
+            5 * single.Model.ToModelData().TreeRoot.Length,
+            folded.Model.ToModelData().TreeRoot.Length);
     }
 
     [Fact]
@@ -368,84 +366,130 @@ public sealed class CrossValidatedFitTest
 
 public sealed class EnsembleMergeTest
 {
-    private static MatchTable BuildMatches(int peptides = 120, int rowsEach = 10)
+    /// <summary>Trains k models on deliberately different slices, so they really do differ.</summary>
+    private static GradientBoostedTrees[] TrainDifferentModels(int k)
     {
-        MarsFeature[] collect =
-        {
-            MarsFeature.PrecursorMz, MarsFeature.FragmentMz,
-            MarsFeature.LogTic, MarsFeature.LogIntensity,
-        };
-
-        var table = new MatchTable(collect);
+        const int rows = 900;
+        var x = new double[rows][];
+        var y = new double[rows];
         var random = new Random(20260822);
 
-        for (int p = 0; p < peptides; p++)
+        for (int i = 0; i < rows; i++)
         {
-            double fragmentMz = 200.0 + (random.NextDouble() * 1000.0);
-            for (int r = 0; r < rowsEach; r++)
-            {
-                double intensity = 500.0 + (random.NextDouble() * 100000.0);
-                table.Set(MarsFeature.PrecursorMz, 400.0 + (p % 20));
-                table.Set(MarsFeature.FragmentMz, fragmentMz);
-                table.Set(MarsFeature.LogTic, Math.Log10(1.0e6));
-                table.Set(MarsFeature.LogIntensity, Math.Log10(intensity));
-                table.DeltaMz.Add((fragmentMz * 2.0e-5) - 0.01 + ((random.NextDouble() - 0.5) * 0.004));
-                table.ObservedIntensity.Add(intensity);
-                table.PeptideGroup.Add(p);
-                table.CommitRow();
-            }
+            double mz = 200.0 + (random.NextDouble() * 1000.0);
+            double time = random.NextDouble() * 3600.0;
+            x[i] = new[] { mz, time, random.NextDouble(), random.NextDouble() };
+            y[i] = (mz * 2.0e-5) + (time * 5.0e-6) - 0.01 + ((random.NextDouble() - 0.5) * 0.01);
         }
 
-        return table;
+        var models = new GradientBoostedTrees[k];
+        for (int f = 0; f < k; f++)
+        {
+            // A different contiguous slice per model, so no two see the same rows in the same
+            // order and the trees genuinely diverge.
+            // With one model there is nothing to hold out; it trains on everything.
+            int holdout = k > 1 ? rows / k : 0;
+            int from = f * holdout;
+            int count = rows - holdout;
+            var slice = new double[count][];
+            var labels = new double[count];
+            int at = 0;
+            for (int i = 0; i < rows; i++)
+            {
+                if (holdout > 0 && i >= from && i < from + holdout) continue;
+                slice[at] = x[i];
+                labels[at] = y[i];
+                at++;
+            }
+
+            models[f] = GradientBoostedTrees.Train(
+                slice[..at], labels[..at],
+                new GbtParams { Objective = GbtObjective.SquaredError, NTrees = 30, MaxDepth = 4, Seed = (ulong)(f + 1) });
+        }
+
+        return models;
     }
 
     [Fact]
-    public void MergedModelPredictsExactlyWhatAveragingTheFoldsPredicts()
+    public void MergedModelPredictsExactlyWhatAveragingWouldEvenWhenTheFoldsDisagree()
     {
-        MzCalibrator calibrator = MzCalibrator.Fit(
-            BuildMatches(), new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 0 },
-            absoluteTimeOffset: 0);
-
-        Assert.Equal(5, calibrator.Models.Count);
-        GradientBoostedTrees merged = EnsembleMerge.Merge(calibrator.Models);
+        GradientBoostedTrees[] models = TrainDifferentModels(5);
+        GradientBoostedTrees merged = EnsembleMerge.Merge(models);
 
         var random = new Random(11);
-        for (int trial = 0; trial < 200; trial++)
-        {
-            var row = new double[calibrator.Features.Count];
-            for (int i = 0; i < row.Length; i++) row[i] = random.NextDouble() * 1200.0;
+        double maxSpread = 0;
 
-            // Not "close": identical. Averaging leaf values reproduces averaging predictions
-            // exactly, because a boosted ensemble's score is linear in its trees.
-            Assert.Equal(calibrator.PredictDelta(row), merged.ScoreSingle(row), 12);
+        for (int trial = 0; trial < 300; trial++)
+        {
+            var row = new[]
+            {
+                200.0 + (random.NextDouble() * 1000.0), random.NextDouble() * 3600.0,
+                random.NextDouble(), random.NextDouble(),
+            };
+
+            double sum = 0, low = double.MaxValue, high = double.MinValue;
+            foreach (GradientBoostedTrees model in models)
+            {
+                double score = model.ScoreSingle(row);
+                sum += score;
+                low = Math.Min(low, score);
+                high = Math.Max(high, score);
+            }
+
+            maxSpread = Math.Max(maxSpread, high - low);
+
+            // Not "close": identical. A boosted ensemble's score is linear in its trees, so
+            // scaling every leaf by 1/k reproduces the mean of the models exactly.
+            Assert.Equal(sum / models.Length, merged.ScoreSingle(row), 12);
         }
+
+        // The fixture is only meaningful if the models actually disagree somewhere. If they
+        // all predicted the same thing, the equality above would be vacuous.
+        Assert.True(maxSpread > 1e-6, $"fold models were identical (max spread {maxSpread:R})");
     }
 
     [Fact]
     public void MergedModelHoldsEveryTreeFromEveryFold()
     {
-        MzCalibrator calibrator = MzCalibrator.Fit(
-            BuildMatches(), new CalibrationOptions { CvFolds = 5, NEstimators = 20, ImportanceSampleRows = 0 },
-            absoluteTimeOffset: 0);
+        GradientBoostedTrees[] models = TrainDifferentModels(4);
+        GradientBoostedTrees merged = EnsembleMerge.Merge(models);
 
-        GradientBoostedTrees merged = EnsembleMerge.Merge(calibrator.Models);
+        int foldTrees = 0;
+        foreach (GradientBoostedTrees model in models) foldTrees += model.ToModelData().TreeRoot.Length;
 
         // The trees add up, which is exactly why merging does not make scoring cheaper.
-        int foldTrees = 0;
-        foreach (GradientBoostedTrees model in calibrator.Models)
-            foldTrees += model.ToModelData().TreeRoot.Length;
-
         Assert.Equal(foldTrees, merged.ToModelData().TreeRoot.Length);
     }
 
     [Fact]
     public void MergingOneModelReturnsItUnchanged()
     {
-        MzCalibrator calibrator = MzCalibrator.Fit(
-            BuildMatches(), new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0 },
-            absoluteTimeOffset: 0);
+        GradientBoostedTrees[] models = TrainDifferentModels(1);
+        Assert.Same(models[0], EnsembleMerge.Merge(models));
+    }
 
-        Assert.Same(calibrator.Models[0], EnsembleMerge.Merge(calibrator.Models));
+    [Fact]
+    public void ChildIndicesAreRemappedSoEveryTreeStaysWalkable()
+    {
+        GradientBoostedTrees[] models = TrainDifferentModels(3);
+        GbtModelData merged = EnsembleMerge.Merge(models).ToModelData();
+
+        // A concatenation that forgot to offset Left/Right would still score - it would just
+        // walk into another fold's nodes and return a plausible wrong number.
+        for (int i = 0; i < merged.Feature.Length; i++)
+        {
+            if (merged.Feature[i] < 0)
+            {
+                Assert.Equal(-1, merged.Left[i]);
+                Assert.Equal(-1, merged.Right[i]);
+                continue;
+            }
+
+            Assert.InRange(merged.Left[i], i + 1, merged.Feature.Length - 1);
+            Assert.InRange(merged.Right[i], i + 1, merged.Feature.Length - 1);
+        }
+
+        foreach (int root in merged.TreeRoot) Assert.InRange(root, 0, merged.Feature.Length - 1);
     }
 
     [Fact]
@@ -467,10 +511,7 @@ public sealed class EnsembleMergeTest
 
         // Averaging models built over different feature vectors would silently score rows
         // against the wrong columns, so it is refused rather than attempted.
-        Assert.Throws<ArgumentException>(
-            () => EnsembleMerge.Merge(new[] { Stub(4), Stub(5) }));
-
-        Assert.Throws<ArgumentException>(
-            () => EnsembleMerge.Merge(Array.Empty<GradientBoostedTrees>()));
+        Assert.Throws<ArgumentException>(() => EnsembleMerge.Merge(new[] { Stub(4), Stub(5) }));
+        Assert.Throws<ArgumentException>(() => EnsembleMerge.Merge(Array.Empty<GradientBoostedTrees>()));
     }
 }

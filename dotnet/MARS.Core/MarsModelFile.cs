@@ -20,9 +20,9 @@ public sealed class MarsModelFile
     /// the version refuses the file rather than guessing.
     /// </summary>
     /// <remarks>
-    /// Version 2 replaced the single <c>model</c> with a <c>models</c> ensemble, one entry
-    /// per cross-validation fold. Version 1 files still load: their single model becomes a
-    /// one-element ensemble, which predicts identically.
+    /// Version 2 added the cross-validation summary. The model itself is still one object:
+    /// a cross-validated fit merges its fold models into one rather than storing them
+    /// separately, so version 1 files load unchanged.
     /// </remarks>
     public const int CurrentFormatVersion = 2;
 
@@ -39,16 +39,10 @@ public sealed class MarsModelFile
     public CalibrationOptionsDto Options { get; set; } = new();
 
     /// <summary>
-    /// The single model of a version 1 file. Null from version 2 on, where
-    /// <see cref="Models"/> carries the ensemble; still read so older files keep loading.
+    /// The model. After cross-validation this is the fold models merged into one, which
+    /// predicts identically to averaging them.
     /// </summary>
-    public GbtModelDto? Model { get; set; }
-
-    /// <summary>
-    /// The fold models. One entry for a single fit, otherwise one per cross-validation
-    /// fold, and a prediction is their mean.
-    /// </summary>
-    public List<GbtModelDto> Models { get; set; } = new();
+    public GbtModelDto Model { get; set; } = new();
 
     public TrainingSummaryDto? Training { get; set; }
 
@@ -205,27 +199,21 @@ public static class MarsModelIo
         NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
     };
 
-    private static List<MarsModelFile.GbtModelDto> ToDtos(IReadOnlyList<GradientBoostedTrees> models)
+    private static MarsModelFile.GbtModelDto ToDto(GradientBoostedTrees model)
     {
-        var dtos = new List<MarsModelFile.GbtModelDto>(models.Count);
-        foreach (GradientBoostedTrees model in models)
+        GbtModelData data = model.ToModelData();
+        return new MarsModelFile.GbtModelDto
         {
-            GbtModelData data = model.ToModelData();
-            dtos.Add(new MarsModelFile.GbtModelDto
-            {
-                BaseScore = data.BaseScore,
-                FeatureCount = data.FeatureCount,
-                Objective = data.Objective,
-                Feature = data.Feature,
-                Threshold = data.Threshold,
-                Left = data.Left,
-                Right = data.Right,
-                Leaf = data.Leaf,
-                TreeRoot = data.TreeRoot,
-            });
-        }
-
-        return dtos;
+            BaseScore = data.BaseScore,
+            FeatureCount = data.FeatureCount,
+            Objective = data.Objective,
+            Feature = data.Feature,
+            Threshold = data.Threshold,
+            Left = data.Left,
+            Right = data.Right,
+            Leaf = data.Leaf,
+            TreeRoot = data.TreeRoot,
+        };
     }
 
     public static void Save(MzCalibrator calibrator, string path)
@@ -252,7 +240,7 @@ public static class MarsModelIo
                 ValidationSplit = calibrator.Options.ValidationSplit,
                 WeightByIntensity = calibrator.Options.WeightByIntensity,
             },
-            Models = ToDtos(calibrator.Models),
+            Model = ToDto(calibrator.Model),
             CrossValidation = calibrator.CrossValidation is not CrossValidationReport cv
                 ? null
                 : new MarsModelFile.CrossValidationDto
@@ -308,37 +296,22 @@ public static class MarsModelIo
         // every m/z it touched.
         FeatureSet features = FeatureSet.FromNames(file.FeatureNames);
 
-        // Version 2 carries an ensemble; version 1 carried one model. A single model is an
-        // ensemble of one and predicts identically, so the old shape needs no special case
-        // beyond finding it.
-        List<MarsModelFile.GbtModelDto> dtos = file.Models.Count > 0
-            ? file.Models
-            : file.Model is null
-                ? throw new InvalidDataException(
-                    "Model file contains neither 'models' nor 'model'. It is not a MARS model.")
-                : new List<MarsModelFile.GbtModelDto> { file.Model };
-
-        var models = new GradientBoostedTrees[dtos.Count];
-        for (int i = 0; i < dtos.Count; i++)
+        GradientBoostedTrees model = GradientBoostedTrees.FromModelData(new GbtModelData
         {
-            MarsModelFile.GbtModelDto dto = dtos[i];
-            models[i] = GradientBoostedTrees.FromModelData(new GbtModelData
-            {
-                BaseScore = dto.BaseScore,
+            BaseScore = file.Model.BaseScore,
 
-                // A file written before these two fields existed carries the same
-                // information in its feature name list, and MARS only ever fits squared
-                // error, so derive rather than reject.
-                FeatureCount = dto.FeatureCount > 0 ? dto.FeatureCount : features.Count,
-                Objective = dto.Objective,
-                Feature = dto.Feature,
-                Threshold = dto.Threshold,
-                Left = dto.Left,
-                Right = dto.Right,
-                Leaf = dto.Leaf,
-                TreeRoot = dto.TreeRoot,
-            });
-        }
+            // A file written before these two fields existed carries the same information in
+            // its feature name list, and MARS only ever fits squared error, so derive rather
+            // than reject.
+            FeatureCount = file.Model.FeatureCount > 0 ? file.Model.FeatureCount : features.Count,
+            Objective = file.Model.Objective,
+            Feature = file.Model.Feature,
+            Threshold = file.Model.Threshold,
+            Left = file.Model.Left,
+            Right = file.Model.Right,
+            Leaf = file.Model.Leaf,
+            TreeRoot = file.Model.TreeRoot,
+        });
 
         var options = new CalibrationOptions
         {
@@ -357,6 +330,6 @@ public static class MarsModelIo
             WeightByIntensity = file.Options.WeightByIntensity,
         };
 
-        return new MzCalibrator(features, models, file.AbsoluteTimeOffset, options, null, null);
+        return new MzCalibrator(features, model, file.AbsoluteTimeOffset, options, null, null);
     }
 }
