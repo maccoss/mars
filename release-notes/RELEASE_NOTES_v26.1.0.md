@@ -57,6 +57,10 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   own platform where a hosted runner exists; `win-arm64` and `linux-arm64` are
   cross-compiled because none is available.
 
+- **Documentation.** `docs/` covers the algorithm, a full CLI reference, the model in
+  depth, how to read the QC figures, the mzML passthrough contract, a map of the code, and
+  how the implementation is verified against the Python one.
+
 ## Bug Fixes
 
 Four defects found while transcribing the Python implementation. Three affect files that

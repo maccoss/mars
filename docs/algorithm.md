@@ -192,6 +192,10 @@ never trained on.
 Below `--min-training-rows` (default 1000) MARS refuses to fit and exits 2, rather than
 producing a model built on noise.
 
+[model.md](model.md) goes further: why boosted trees rather than a polynomial, how the
+objective and histogram splits work, how the model file is laid out, and how the
+predictions compare against Python's XGBoost on identical rows.
+
 ## Step 4: Correction
 
 For every peak of every qualifying MS2 spectrum:
@@ -317,6 +321,11 @@ Equivalence is defined on decoded values, which is what any consumer actually re
 
 ## See also
 
+- [model.md](model.md) - the gradient boosted trees in depth, and the model file format
 - [spectral-libraries.md](spectral-libraries.md) - the four library sources and their quirks
+- [qc-report.md](qc-report.md) - how to read the figures MARS writes
 - [mzml-passthrough.md](mzml-passthrough.md) - how the output file is written
+- [cli-reference.md](cli-reference.md) - every command and option
+- [architecture.md](architecture.md) - a map of the code
+- [python-parity.md](python-parity.md) - how this is checked against the Python implementation
 - [dotnet-port-spec.md](dotnet-port-spec.md) - the port specification and acceptance gates

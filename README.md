@@ -161,12 +161,12 @@ Targets `net8.0` by default, which runs unchanged on .NET 9 and 10. With a .NET 
 installed you can build the full matrix:
 
 ```bash
-dotnet build -c Release -p:MarsTargetFrameworks="net8.0;net10.0"
+dotnet build -c Release -p:MarsIncludeNet10=true
 ```
 
 ### Platform status
 
-CI builds and tests on Windows, Linux and macOS, and packages all five runtime
+CI builds and tests on Windows, Linux and macOS, and packages all six runtime
 identifiers on every push.
 
 | Platform | Status |
@@ -214,9 +214,16 @@ mars calibrate \
     --output-dir corrected/
 ```
 
-Writes `{input}-mars.mzML` for each input, plus `mars_model.json` and
-`mars_qc_summary.txt`. All input files are fitted together as one cohort, which is what
-lets the model learn drift across a run sequence rather than only within a file.
+Writes `{input}-mars.mzML` for each input, plus `mars_model.json`,
+`mars_qc_summary.txt` and `mars_qc_report.html`. All input files are fitted together as one
+cohort, which is what lets the model learn drift across a run sequence rather than only
+within a file.
+
+`mars_qc_report.html` is the one to look at: the error distribution before and after, the
+error across retention time and m/z, feature importance, and a panel per feature. It is a
+single self-contained file with everything embedded, so it can be emailed as an attachment
+and read by someone who has neither the data nor the tool. See
+[docs/qc-report.md](docs/qc-report.md), or pass `--no-html-report` to skip it.
 
 For high-resolution data use a relative tolerance:
 
@@ -289,11 +296,18 @@ not `cmp`. See [docs/algorithm.md](docs/algorithm.md#determinism).
 
 ## Documentation
 
+[docs/](docs/) is the full documentation. The pages most people want:
+
 | | |
 |---|---|
 | [docs/algorithm.md](docs/algorithm.md) | How the recalibration works: matching, features, model, correction |
+| [docs/cli-reference.md](docs/cli-reference.md) | Every command and option, and what the exit codes mean |
 | [docs/spectral-libraries.md](docs/spectral-libraries.md) | Library sources and choosing a tolerance |
+| [docs/qc-report.md](docs/qc-report.md) | How to read the QC figures |
+| [docs/model.md](docs/model.md) | The gradient boosted trees, in depth |
 | [docs/mzml-passthrough.md](docs/mzml-passthrough.md) | How output files are written |
+| [docs/architecture.md](docs/architecture.md) | A map of the code, for anyone modifying it |
+| [docs/python-parity.md](docs/python-parity.md) | How this is verified against the Python implementation |
 | [docs/dotnet-port-spec.md](docs/dotnet-port-spec.md) | Port specification, acceptance gates, measured results |
 | [dotnet/README.md](dotnet/README.md) | The C# source tree |
 | [release-notes/](release-notes/) | Per-version release notes and the release process |
