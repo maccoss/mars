@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using MARS.Core;
 using MARS.IO;
+using MARS.Report;
 
 namespace MARS.Cli;
 
@@ -39,7 +40,10 @@ public static class CalibrateCommand
         string reportPath = args.String("report") ?? Path.Combine(outputDirectory, "mars_qc_summary.txt");
         string? dumpMatchesPath = args.String("dump-matches");
         string? dumpPredictionsPath = args.String("dump-predictions");
-        bool keepDetail = dumpMatchesPath is not null || dumpPredictionsPath is not null;
+        bool noHtmlReport = args.Flag("no-html-report");
+        string htmlReportPath = args.String("html-report")
+            ?? Path.Combine(outputDirectory, "mars_qc_report.html");
+        bool keepDetail = dumpMatchesPath is not null || dumpPredictionsPath is not null || !noHtmlReport;
 
         var matchOptions = new MatchOptions
         {
@@ -190,6 +194,19 @@ public static class CalibrateCommand
         QcReport.Write(reportPath, calibrator, matcher.Statistics, mzmlFiles, matchOptions);
         Log.Info($"Wrote QC report to {reportPath}");
 
+        if (!noHtmlReport)
+        {
+            QcHtmlReport.Write(
+                htmlReportPath,
+                BuildReportData(table, calibrator),
+                stats,
+                matcher.Statistics,
+                mzmlFiles,
+                DescribeTolerance(matchOptions),
+                MarsInfo.Version);
+            Log.Info($"Wrote QC figures to {htmlReportPath}");
+        }
+
         // ---- Pass 2: write corrected files -------------------------------------------
         if (!noRecalibrate)
         {
@@ -290,6 +307,51 @@ public static class CalibrateCommand
     internal static double PercentReduction(double before, double after) =>
         before > 0 ? (before - after) / before * 100.0 : 0.0;
 
+    /// <summary>
+    /// Collects the per-row values the figures are drawn from.
+    /// </summary>
+    /// <remarks>
+    /// The arrays are handed over rather than copied: the match table's backing store is
+    /// already column-major in exactly the layout the charts want, and a cohort can carry
+    /// millions of rows. <see cref="GrowableArray{T}.Items"/> can be longer than the row
+    /// count, so every span is bounded by <c>table.Count</c>.
+    /// </remarks>
+    private static QcHtmlReport.Data BuildReportData(MatchTable table, MzCalibrator calibrator)
+    {
+        int rows = table.Count;
+        double[] before = table.DeltaMz.Items[..rows];
+
+        double[] predictions = calibrator.PredictAll(table);
+        var after = new double[rows];
+        for (int i = 0; i < rows; i++) after[i] = before[i] - predictions[i];
+
+        var features = new List<(string Name, double[] Values)>(calibrator.Features.Count);
+        foreach (MarsFeature feature in calibrator.Features.Features)
+            features.Add((MarsFeatures.NameOf(feature), table.Column(feature).Items[..rows]));
+
+        var importanceNames = new List<string>(calibrator.Features.Count);
+        foreach (MarsFeature feature in calibrator.Features.Features)
+            importanceNames.Add(MarsFeatures.NameOf(feature));
+
+        return new QcHtmlReport.Data
+        {
+            ErrorBefore = before,
+            ErrorAfter = after,
+            RetentionTime = table.RetentionTime is null ? Array.Empty<double>() : table.RetentionTime.Items[..rows],
+            FragmentMz = table.Has(MarsFeature.FragmentMz)
+                ? table.Column(MarsFeature.FragmentMz).Items[..rows]
+                : Array.Empty<double>(),
+            Features = features,
+            ImportanceNames = importanceNames,
+            Importance = calibrator.Statistics?.PermutationImportance ?? Array.Empty<double>(),
+        };
+    }
+
+    private static string DescribeTolerance(MatchOptions options) =>
+        options.TolerancePpm > 0
+            ? $"{options.TolerancePpm:0.##} ppm"
+            : $"{options.MzToleranceTh:0.###} Th";
+
     private static void PrintHelp()
     {
         Console.Error.WriteLine("""
@@ -330,6 +392,10 @@ public static class CalibrateCommand
                   --output-dir <dir>     Output directory (default .)
                   --model-path <path>    Where to save the model
                   --report <path>        Where to write the QC summary
+                  --html-report <path>   Where to write the QC figures (default
+                                         mars_qc_report.html in the output directory).
+                                         One self-contained file, safe to email
+                  --no-html-report       Skip the figures and write only the text summary
                   --dump-matches <path>  Write every matched fragment to CSV, one row per
                                          match, with all computed features. Diagnostic;
                                          a large cohort produces millions of rows

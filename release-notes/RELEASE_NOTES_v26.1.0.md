@@ -37,6 +37,14 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   under every mode.
 - **Shared model implementation.** The gradient boosted trees come from `Osprey.ML`, so one
   boosting implementation is maintained rather than one per tool.
+- **A QC report with figures, as one self-contained HTML file.** `mars calibrate` writes
+  `mars_qc_report.html` alongside the text summary: the error distribution before and
+  after correction, median error across retention time and fragment m/z, permutation
+  importance, and a density panel with median-error trend lines for every active feature.
+  Everything is embedded - no scripts, no external references, nothing fetched when it is
+  opened - so the file can be attached to an email and read by someone who has neither the
+  data nor the tool. A 22-feature report is around 210 KB. `--no-html-report` skips it and
+  `--html-report <path>` moves it.
 - **`--dump-matches`** writes every matched fragment to CSV with all computed features, for
   answering "which peak did MARS match, and what did it compute from it" without a
   debugger. It is also what makes this implementation checkable against the Python one row
