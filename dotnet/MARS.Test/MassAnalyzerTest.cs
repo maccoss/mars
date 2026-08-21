@@ -205,6 +205,56 @@ public class MassAnalyzerTest
             () => ResolutionMode.Resolve(args, Array.Empty<string>(), new MatchOptions(), _ => { }));
     }
 
+    /// <summary>
+    /// mars verify writes a round-tripped copy and deletes it unless --keep, so an --output
+    /// pointing at the input would destroy the file the command exists to vouch for.
+    /// </summary>
+    [Fact]
+    public void VerifyRefusesToWriteOverItsInput()
+    {
+        string directory = NewDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "run.mzML");
+            SyntheticMzML.Write(path, spectrumCount: 8, chromatogramCount: 0);
+            long before = new FileInfo(path).Length;
+
+            int exit = VerifyCommand.Run(
+                CommandLineArgs.Parse(new[] { "verify", "--input", path, "--output", path }));
+
+            Assert.Equal(Program.ExitInputError, exit);
+            Assert.True(File.Exists(path), "verify deleted its own input");
+            Assert.Equal(before, new FileInfo(path).Length);
+        }
+        finally
+        {
+            Delete(directory);
+        }
+    }
+
+    /// <summary>The same file reached by a different spelling of the path is still the same file.</summary>
+    [Fact]
+    public void VerifyRefusesAnInputAndOutputThatOnlyLookDifferent()
+    {
+        string directory = NewDirectory();
+        try
+        {
+            string path = Path.Combine(directory, "run.mzML");
+            SyntheticMzML.Write(path, spectrumCount: 8, chromatogramCount: 0);
+            string roundabout = Path.Combine(directory, ".", "run.mzML");
+
+            int exit = VerifyCommand.Run(
+                CommandLineArgs.Parse(new[] { "verify", "--input", path, "--output", roundabout }));
+
+            Assert.Equal(Program.ExitInputError, exit);
+            Assert.True(File.Exists(path));
+        }
+        finally
+        {
+            Delete(directory);
+        }
+    }
+
     private static MassAnalyzerClass Detect(SyntheticMzML.MassAnalyzerLayout layout)
     {
         string directory = NewDirectory();

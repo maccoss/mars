@@ -57,6 +57,22 @@ public static class VerifyCommand
                                 Path.GetDirectoryName(Path.GetFullPath(inputPath)) ?? ".",
                                 Path.GetFileNameWithoutExtension(inputPath) + "-verify.mzML");
 
+        // Refuse to write over the input. Verify deletes its output unless --keep, so
+        // pointing --output at the input would round-trip the file onto itself and then
+        // delete it - losing raw data to a command whose whole purpose is to prove nothing
+        // was lost. Compared on full paths so that a relative path and an absolute one to
+        // the same file are still caught.
+        if (string.Equals(
+                Path.GetFullPath(outputPath), Path.GetFullPath(inputPath),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Log.Error(
+                "--output is the same file as the input. mars verify writes a round-tripped " +
+                "copy and deletes it unless --keep is given, so this would destroy the input. " +
+                "Choose a different --output.");
+            return Program.ExitInputError;
+        }
+
         int threads = args.Int("threads") ?? -1;
         int checkOffsets = args.Int("check-offsets") ?? 0;
 

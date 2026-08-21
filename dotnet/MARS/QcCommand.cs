@@ -122,7 +122,9 @@ public static class QcCommand
         MarsFeature[] collect;
         if (noHtmlReport)
         {
-            collect = new[] { MarsFeature.FragmentMz, MarsFeature.PrecursorMz };
+            // Only fragment m/z. The summary needs it to convert each row to ppm, and with
+            // no figures to draw nothing reads any other feature column.
+            collect = new[] { MarsFeature.FragmentMz };
         }
         else
         {

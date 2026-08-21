@@ -67,6 +67,12 @@ high-resolution data no longer needs to be told what it is.
   in-sample minus out-of-fold, the reverse of how `CrossValidationReport.OptimismMad` defines
   it, so the figure appeared negative. The text summary was always correct.
 
+- **`mars verify` could destroy its input.** Passing `--output` pointing at the input file
+  round-tripped the file onto itself and then deleted it, since `verify` removes its output
+  unless `--keep` is given. It now refuses when input and output resolve to the same path -
+  losing raw data to the one command whose purpose is to prove nothing was lost was the worst
+  possible failure for it to have.
+
 ## Performance
 
 Measured on an i9-9900K (16 threads), sequentially so the numbers are not contention:

@@ -98,3 +98,14 @@ depth 8 leaves out-of-fold MAD flat at 0.0445-0.0449 while in-sample drops from 
 Worth revisiting only if the error floor moves - if the mismatched-peak population is dealt
 with better, or if a transferred model turns out to be capacity-limited rather than
 noise-limited.
+
+## The Python CLI's import cost
+
+`mars/cli.py` imports `__version__` from the package root, which runs
+`mars/__init__.py` and so eagerly imports the submodules and their dependencies on
+every invocation - including `mars --version`. Reading the distribution metadata
+directly would avoid both the side effects and the startup cost.
+
+Raised by the Copilot review on PR #9 and **not applied**: the Python implementation is
+frozen to bug fixes, and startup cost is not a bug. Worth doing only if that track is
+unfrozen; if it is retired as planned, this closes with it.
