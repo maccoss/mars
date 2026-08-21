@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
     <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
+    <ProjectReference Include="..\MARS.Pwiz\MARS.Pwiz.csproj" />
   </ItemGroup>
 
 </Project>

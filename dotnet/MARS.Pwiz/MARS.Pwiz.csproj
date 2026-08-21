@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MARS's bridge to pwiz-sharp, the .NET 8 port of the ProteoWizard core
+    (ProteoWizard/pwiz PR #4178). It buys output formats MARS has no writer for - mzXML and
+    mzMLb today - and puts the format code with the people who maintain the format.
+
+    The reference is OPTIONAL and points at an external checkout, because pwiz-sharp has no
+    package feed and is far too large to vendor the way third_party/Osprey.ML is. When the
+    checkout is absent this project still compiles: MARS_NO_PWIZ drops the backend and
+    PwizOutput reports itself unavailable, so a plain `dotnet build` with no pwiz anywhere
+    keeps working and MARS keeps writing mzML through its own byte-splice writer. That is the
+    same shape pwiz's own vendor projects use for their SDKs (NO_VENDOR_SUPPORT).
+
+    Point it somewhere else with:
+
+        dotnet build -p:PwizSharpDir=<path-to>/pwiz/pwiz-sharp
+  -->
+  <PropertyGroup>
+    <RootNamespace>MARS.Pwiz</RootNamespace>
+    <AssemblyName>MARS.Pwiz</AssemblyName>
+    <Description>Writes MARS-corrected spectra through pwiz-sharp, for formats beyond mzML.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Default to a sibling organisation checkout, which is where a pwiz clone naturally
+         lands next to a mars one. -->
+    <PwizSharpDir Condition="'$(PwizSharpDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\ProteoWizard\pwiz\pwiz-sharp</PwizSharpDir>
+    <PwizMsDataProject>$(PwizSharpDir)\pwiz\src\MsData\MsData.csproj</PwizMsDataProject>
+    <PwizAvailable Condition="Exists('$(PwizMsDataProject)')">true</PwizAvailable>
+    <PwizAvailable Condition="'$(PwizAvailable)' == ''">false</PwizAvailable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PwizAvailable)' != 'true'">
+    <DefineConstants>$(DefineConstants);MARS_NO_PWIZ</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
+    <Compile Remove="MarsSpectrumList.cs" />
+    <Compile Remove="PwizWriteBackend.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PwizAvailable)' == 'true'">
+    <!--
+      MsData alone. It carries the mzML, mzXML and mzMLb writers, so the writer path needs
+      no vendor projects - which matters, because Analysis references the Waters reader and
+      that stages a native Windows-only MassLynxRaw.dll into the output. Reading vendor RAW
+      will need that chain; writing does not, and MARS ships four non-Windows artifacts.
+
+      The wrapper therefore derives from SpectrumListBase (MsData) rather than
+      SpectrumListWrapper (Analysis), which costs three delegating members.
+    -->
+    <ProjectReference Include="$(PwizMsDataProject)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
+    <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
+  </ItemGroup>
+
+  <Target Name="ReportPwizAvailability" BeforeTargets="Build">
+    <Message Condition="'$(PwizAvailable)' == 'true'"
+             Importance="normal"
+             Text="MARS.Pwiz: building against pwiz-sharp at $(PwizSharpDir)" />
+    <Message Condition="'$(PwizAvailable)' != 'true'"
+             Importance="normal"
+             Text="MARS.Pwiz: no pwiz-sharp at $(PwizSharpDir); mzML output only. Set -p:PwizSharpDir to enable mzXML and mzMLb." />
+  </Target>
+
+</Project>

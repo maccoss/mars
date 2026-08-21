@@ -110,6 +110,34 @@ public class CommandLineArgsTest
         }
     }
 
+    /// <summary>
+    /// The refusal has to reach the user as an error, not as an unhandled exception. It is
+    /// raised by throwing, so Program has to catch it - which it did not, briefly, and the
+    /// only symptom was a stack trace where a one-line message belonged.
+    /// </summary>
+    [Fact]
+    public void ATypoIsReportedAsAnInputErrorRatherThanACrash()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "mars-typo-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string mzml = Path.Combine(directory, "input.mzML");
+            SyntheticMzML.Write(mzml, spectrumCount: 4, chromatogramCount: 0);
+
+            int exit = Program.Main(new[]
+            {
+                "qc", "--mzml", mzml, "--prism-csv", "nonexistent.csv", "--tolernace", "0.3",
+            });
+
+            Assert.Equal(Program.ExitInputError, exit);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        }
+    }
+
     private static void Run(string command, string[] argv)
     {
         CommandLineArgs args = CommandLineArgs.Parse(argv);

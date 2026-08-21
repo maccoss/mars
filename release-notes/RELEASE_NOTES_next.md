@@ -53,6 +53,24 @@ high-resolution data no longer needs to be told what it is.
   the model file, the CSV dumps, the Python parity comparison - because they are identifiers
   there. Type is larger throughout.
 
+- **`--output-format mzXML`, `mzMLb` or `mgf`,** on `calibrate` and `apply`. mzML remains the
+  default and is still written by MARS's own byte-splice writer, which copies the input and
+  replaces only the m/z arrays it corrected. The other formats have no input to splice into,
+  so they are serialized by [pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178) - the
+  same code msconvert uses, and the code that wrote the mzML MARS reads in the first place.
+
+  Both paths run the same correction over the same values. Writing one Stellar file both ways
+  and diffing with `mars compare` finds no difference: 114,021 spectra, 82,349,582 peaks, zero
+  m/z values differing. mzMLb is worth a look on size alone - 0.56 GB where the input was
+  1.22 GB.
+
+  The binary encoding is read from the input and matched per array. Left to its defaults pwiz
+  writes 64-bit *uncompressed*, which inflated a Stellar run by 61%.
+
+  The pwiz reference is **optional**: pwiz-sharp has no package feed yet, so a MARS built
+  without a checkout writes mzML exactly as before and refuses the other formats with an
+  explanatory error. Build with `-p:PwizSharpDir=<path>/pwiz/pwiz-sharp` to enable them.
+
 ## Bug Fixes
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were
@@ -62,6 +80,11 @@ high-resolution data no longer needs to be told what it is.
   the nearest real one. The set of valid options is whatever the command reads, so it cannot
   drift from the code; a test passes each command its full documented option set and asserts
   none is rejected.
+
+- **A mistyped option crashed instead of reporting an error.** The refusal added above is
+  raised by throwing, and `Program` was not catching it, so a typo produced a stack trace
+  where a one-line message belonged. Now caught and reported as an input error, with a test
+  that goes through `Program.Main` rather than around it.
 
 - **The cross-validation gap in the HTML report had the wrong sign.** It was rendered as
   in-sample minus out-of-fold, the reverse of how `CrossValidationReport.OptimismMad` defines

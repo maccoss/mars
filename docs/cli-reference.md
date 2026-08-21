@@ -79,6 +79,51 @@ window actually does to the numbers.
 
 ---
 
+## Output formats
+
+`calibrate` and `apply` write mzML by default. `--output-format` selects another.
+
+| `--output-format` | Written by | Notes |
+|---|---|---|
+| `mzML` (default) | MARS | The input, byte for byte, except the m/z arrays that changed |
+| `mzXML` | pwiz | Cannot express ion mobility or some isolation-window terms |
+| `mzMLb` | pwiz | mzML in an HDF5 container; roughly half the size |
+| `mgf` | pwiz | MS2 peak lists only - no MS1, no chromatograms, no scan metadata |
+
+Two different writers sit behind this, and which one runs depends only on the format.
+
+**mzML is spliced.** MARS copies the input and replaces only the m/z arrays it corrected, so
+everything else is identical by construction rather than by care. That is the whole of
+[the passthrough contract](mzml-passthrough.md), and it is why mzML is the default and does
+not go through pwiz.
+
+**Everything else is built.** There is no input of that format to splice into, so the file is
+serialized from scratch by [pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178) - the
+same code msconvert uses, which is also what wrote the mzML MARS is reading. Both paths run
+the same correction over the same values: writing one file both ways and diffing them with
+`mars compare` finds no difference across 82 million peaks.
+
+The binary encoding is read from the input and matched, per array, so a 64-bit zlib input
+produces a 64-bit zlib output. Left to its own defaults pwiz writes 64-bit **uncompressed**,
+which inflated a Stellar run by 61%.
+
+`mgf` and `mzXML` print a warning at startup saying what they drop.
+
+### Builds without pwiz
+
+The pwiz reference is optional, because pwiz-sharp has no package feed yet. A MARS built
+without it writes mzML and refuses the others with an explanatory error; nothing else about
+MARS changes. To enable them, point the build at a pwiz checkout:
+
+```bash
+dotnet build -c Release -p:PwizSharpDir=/path/to/pwiz/pwiz-sharp
+```
+
+`mars apply --validate` checks an mzML index and its SHA-1 footer. The other formats have
+neither, so it says it is skipping rather than reporting a pass it did not make.
+
+---
+
 ## `mars qc`
 
 Matches library fragments against the spectra and reports the mass error that is already

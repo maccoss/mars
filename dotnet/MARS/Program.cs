@@ -57,10 +57,19 @@ public static class Program
                 _ => UnknownCommand(parsed.Command),
             };
 
+            // Commands that finish their option reading call RejectUnknown() themselves,
+            // before doing any work. This is the backstop for the ones that return early -
+            // an option read after an early return was never queried, so it cannot be
+            // distinguished from a typo here and stays a warning rather than an error.
             foreach (string unknown in parsed.UnknownOptions())
                 Log.Warn($"Unrecognized option --{unknown} was ignored.");
 
             return exit;
+        }
+        catch (UnknownOptionException ex)
+        {
+            Log.Error(ex.Message);
+            return ExitInputError;
         }
         catch (FileNotFoundException ex)
         {

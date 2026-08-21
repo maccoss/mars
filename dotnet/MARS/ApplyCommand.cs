@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using MARS.Core;
 using MARS.IO;
+using MARS.Pwiz;
 
 namespace MARS.Cli;
 
@@ -33,6 +34,7 @@ public static class ApplyCommand
                       --on-reorder <mode>    clamp (default), revert, or allow
                       --python-compat        Reproduce the Python inconsistencies
                       --threads <n>          Worker threads
+                      --output-format <fmt>  mzML (default), mzXML, mzMLb or mgf
                       --validate             Check the index and checksum of each output
                   -v, --verbose              Verbose output
                 """);
@@ -88,6 +90,9 @@ public static class ApplyCommand
         bool validate = args.Flag("validate");
         int threads = args.Int("threads") ?? -1;
 
+        // Resolved before any file is opened, so an unwritable format fails immediately.
+        MarsOutputFormat outputFormat = CorrectedFileWriter.ResolveFormat(args);
+
         var stopwatch = Stopwatch.StartNew();
         var failures = 0;
 
@@ -98,21 +103,22 @@ public static class ApplyCommand
                 ? null
                 : TemperatureCsvReader.Find(file, temperatureDirectory, Log.Debug);
 
-            string outputFile = Path.Combine(outputDirectory,
-                Path.GetFileNameWithoutExtension(file) + "-mars.mzML");
+            string outputFile = CorrectedFileWriter.OutputPathFor(file, outputDirectory, outputFormat);
 
             Log.Info($"Calibrating: {Path.GetFileName(file)} -> {Path.GetFileName(outputFile)}");
-            MzMLWriteResult result = MzMLWriter.Write(
-                info, outputFile,
-                () => new CalibratingTransform(calibrator, correctionOptions, temperatures),
-                new MzMLWriteOptions { MaxDegreeOfParallelism = threads },
-                Log.Warn);
-
-            Log.Info($"  {result.SpectraCorrected:N0} of {result.SpectraSeen:N0} spectra corrected");
-            if (result.MonotonicityFixes > 0)
-                Log.Warn($"  {result.MonotonicityFixes:N0} peaks adjusted to keep m/z ascending");
+            CorrectedFileWriter.Write(
+                outputFormat, info, outputFile, calibrator, correctionOptions, temperatures, threads);
 
             if (!validate) continue;
+
+            // The validator checks an mzML index and its SHA-1 footer, neither of which the
+            // other formats have. Saying so beats silently reporting nothing.
+            if (outputFormat != MarsOutputFormat.MzML)
+            {
+                Log.Info($"  --validate checks the mzML index and checksum; skipped for "
+                         + $"{PwizOutput.Name(outputFormat)}");
+                continue;
+            }
 
             IndexValidationResult validation = MzMLValidator.Validate(outputFile);
             if (validation.IsValid)

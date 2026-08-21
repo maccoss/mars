@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using MARS.Core;
 using MARS.IO;
+using MARS.Pwiz;
 using MARS.Report;
 
 namespace MARS.Cli;
@@ -79,6 +80,10 @@ public static class CalibrateCommand
         string? temperatureDirectory = args.String("temperature-dir");
 
         ResolutionMode resolution = ResolutionMode.Resolve(args, mzmlFiles, matchOptions, Log.Info);
+
+        // Resolved before any work: an output format this build cannot write, or one that
+        // does not exist, should cost a second rather than a full training run.
+        MarsOutputFormat outputFormat = CorrectedFileWriter.ResolveFormat(args);
 
         // Read before the check below rather than inside LoadLibrary, so that every option
         // this command understands has been seen by the time the check runs.
@@ -227,25 +232,15 @@ public static class CalibrateCommand
         {
             foreach (string file in mzmlFiles)
             {
-                string outputFile = Path.Combine(outputDirectory,
-                    Path.GetFileNameWithoutExtension(file) + "-mars.mzML");
                 temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
-
-                Log.Info($"Writing: {Path.GetFileName(outputFile)}");
-                MzMLWriteResult result = MzMLWriter.Write(
+                CorrectedFileWriter.Write(
+                    outputFormat,
                     infoByFile[file],
-                    outputFile,
-                    () => new CalibratingTransform(calibrator, correctionOptions, temperatures),
-                    new MzMLWriteOptions { MaxDegreeOfParallelism = args.Int("threads") ?? -1 },
-                    Log.Warn);
-
-                Log.Info($"  {result.SpectraCorrected:N0} of {result.SpectraSeen:N0} spectra corrected, " +
-                         $"{result.OutputLength:N0} bytes");
-                if (result.MonotonicityFixes > 0)
-                {
-                    Log.Warn($"  {result.MonotonicityFixes:N0} peaks would have broken ascending m/z order " +
-                             $"and were adjusted ({correctionOptions.Monotonicity})");
-                }
+                    CorrectedFileWriter.OutputPathFor(file, outputDirectory, outputFormat),
+                    calibrator,
+                    correctionOptions,
+                    temperatures,
+                    args.Int("threads") ?? -1);
             }
         }
 
@@ -347,6 +342,9 @@ public static class CalibrateCommand
                   --temperature-dir <d>  Directory of RFA2-/RFC2- temperature CSVs
 
             Matching:
+                  --output-format <fmt>  mzML (default), mzXML, mzMLb or mgf. mzML is
+                                         written by splicing the input; the rest are
+                                         built through pwiz
                   --resolution <mode>    unit, hram or auto (default auto: read the mass
                                          analyzer from the mzML and pick the tolerance
                                          and the QC report's units to match)
