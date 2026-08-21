@@ -45,6 +45,12 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   opened - so the file can be attached to an email and read by someone who has neither the
   data nor the tool. A 22-feature report is around 210 KB. `--no-html-report` skips it and
   `--html-report <path>` moves it.
+- **`mars qc` writes the figures too**, minus the ones that need a model: the error as
+  measured, how it varies across retention time and fragment m/z, and a panel per feature.
+  That is the report the decision to calibrate actually turns on, since `qc` is what you run
+  first. It stops short of predicting how much of the error is removable, because nothing
+  short of fitting a model answers that. `mars qc` also accepts `--temperature-dir` now, so
+  the temperature panels appear there as well.
 - **`--dump-matches`** writes every matched fragment to CSV with all computed features, for
   answering "which peak did MARS match, and what did it compute from it" without a
   debugger. It is also what makes this implementation checkable against the Python one row
