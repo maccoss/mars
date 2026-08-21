@@ -212,6 +212,7 @@ public sealed class FragmentMatcher
 
                 table.DeltaMz.Add(observedMz - expectedMz);
                 table.ObservedIntensity.Add(observedIntensity);
+                table.PeptideGroup.Add(_library.PeptideGroup[entry]);
 
                 if (table.KeepDetail)
                 {

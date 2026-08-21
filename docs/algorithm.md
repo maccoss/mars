@@ -180,8 +180,12 @@ Rows are weighted by observed peak intensity, normalized to mean 1. The normaliz
 matters: under squared error the hessian **is** the sample weight, so raw detector counts
 would put the summed hessian in the millions and make `min_child_weight` meaningless.
 
-Twenty percent of rows are held out to report validation error honestly. They are scored,
-never trained on.
+By default MARS trains five models, one per fold, with **folds split by peptide**, and
+every reported number comes from a model that never saw the peptide it is scoring. A
+peptide's fragments recur across hundreds of spectra with the same theoretical m/z, and
+`fragment_mz` is a feature, so splitting rows rather than peptides would let the model
+memorize a peptide's error and report an accuracy it cannot reach on anything new. See
+[model.md](model.md#cross-validation).
 
 > **A note on `min_child_weight`.** It thresholds the summed hessian, and the hessian means
 > different things under different objectives. Under logistic loss it is p(1-p), never above

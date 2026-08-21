@@ -62,6 +62,9 @@ public sealed class CalibrationTest : IDisposable
             table.Set(MarsFeature.AbsoluteTime, absoluteTime);
             table.DeltaMz.Add(error);
             table.ObservedIntensity.Add(intensity);
+            // Several rows per peptide, as real matching produces: one peptide is matched in
+            // many spectra. Cross-validation keeps them together.
+            table.PeptideGroup.Add(i / 8);
             table.CommitRow();
         }
 
@@ -78,7 +81,13 @@ public sealed class CalibrationTest : IDisposable
         TrainingStatistics stats = calibrator.Statistics!;
 
         Assert.Equal(20000, stats.RowsUsed);
-        Assert.True(stats.After.StdDev < 0.35 * stats.Before.StdDev,
+
+        // The "after" figures are out-of-fold: each row scored by a model that never trained
+        // on its peptide. That is a little worse than the in-sample number this threshold
+        // used to be set against, and deliberately so - it is what the model achieves on data
+        // it has not seen. A collapse to under 40% of the original spread still means the
+        // systematic part was found; what is left is the injected noise.
+        Assert.True(stats.After.StdDev < 0.40 * stats.Before.StdDev,
             $"spread should collapse: {stats.Before.StdDev:R} -> {stats.After.StdDev:R}");
         Assert.True(Math.Abs(stats.After.Median) < 0.002,
             $"residuals should centre near zero, got {stats.After.Median:R}");
@@ -198,6 +207,7 @@ public sealed class CalibrationTest : IDisposable
             table.Set(MarsFeature.InjectionTime, i % 10 == 0 ? double.NaN : 0.02);
             table.DeltaMz.Add(0.001 * (i % 7));
             table.ObservedIntensity.Add(1000.0);
+            table.PeptideGroup.Add(i / 8);
             table.CommitRow();
         }
 
@@ -222,6 +232,7 @@ public sealed class SpectrumCorrectorTest
             table.Set(MarsFeature.FragmentMz, 200.0 + (i * 0.3));
             table.DeltaMz.Add(0.02);
             table.ObservedIntensity.Add(1000.0);
+            table.PeptideGroup.Add(i / 8);
             table.CommitRow();
         }
 

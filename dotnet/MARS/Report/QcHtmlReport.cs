@@ -39,6 +39,9 @@ public static class QcHtmlReport
         public required IReadOnlyList<string> ImportanceNames { get; init; }
 
         public required IReadOnlyList<double> Importance { get; init; }
+
+        /// <summary>Cross-validation results, or null when a single model was fitted.</summary>
+        public CrossValidationReport? CrossValidation { get; init; }
     }
 
     /// <param name="statistics">Training statistics, or null when no model was fitted.</param>
@@ -104,6 +107,8 @@ public static class QcHtmlReport
             Figure(html, null, null,
                 Charts.ErrorHeatmap(data.RetentionTime, data.FragmentMz, data.ErrorAfter, "Th", "After correction"));
         }
+
+        AppendCrossValidation(html, data.CrossValidation);
 
         if (data.Importance.Count > 0)
         {
@@ -197,6 +202,88 @@ public static class QcHtmlReport
 
         html.Append(" Run <code>mars calibrate</code> to find out how much of this is "
                   + "removable.</div>");
+    }
+
+    /// <summary>
+    /// Per-fold accuracy and the spread across folds.
+    /// </summary>
+    /// <remarks>
+    /// The spread is the point. One held-out number says how the model did on one split;
+    /// five say whether that number was luck. A tight spread means the estimate is stable,
+    /// a wide one means the cohort has regions the model handles very differently and the
+    /// headline figure is an average over them.
+    /// </remarks>
+    private static void AppendCrossValidation(StringBuilder html, CrossValidationReport? cv)
+    {
+        if (cv is null) return;
+
+        html.Append("<h2>Cross-validation</h2>");
+        html.Append("<p class=\"note\">")
+            .Append(cv.Folds.ToString(CultureInfo.InvariantCulture))
+            .Append(" folds split by peptide, over ")
+            .Append(cv.Groups.ToString("N0", CultureInfo.InvariantCulture))
+            .Append(" peptides. Every row was scored by a model that never saw its peptide, so "
+                  + "these are the numbers to trust; splitting rows rather than peptides would let "
+                  + "the model memorize a peptide's fragment m/z and report an accuracy it cannot "
+                  + "reach on anything new.</p>");
+
+        html.Append("<figure><table class=\"folds\">");
+        html.Append("<tr><th>fold</th><th class=\"num\">rows</th><th class=\"num\">MAD (Th)</th>"
+                  + "<th class=\"num\">RMS (Th)</th><th class=\"num\">reduction</th>"
+                  + "<th class=\"num\">Pearson r</th></tr>");
+
+        for (int i = 0; i < cv.PerFold.Length; i++)
+        {
+            FoldMetrics fold = cv.PerFold[i];
+            html.Append("<tr><td>").Append(i + 1).Append("</td>")
+                .Append("<td class=\"num\">").Append(fold.Rows.ToString("N0", CultureInfo.InvariantCulture)).Append("</td>")
+                .Append("<td class=\"num\">").Append(Format(fold.Mad)).Append("</td>")
+                .Append("<td class=\"num\">").Append(Format(fold.Rms)).Append("</td>")
+                .Append("<td class=\"num\">").Append(fold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture)).Append("%</td>")
+                .Append("<td class=\"num\">").Append(Format(fold.PearsonR)).Append("</td></tr>");
+        }
+
+        html.Append("<tr class=\"total\"><td>pooled</td>")
+            .Append("<td class=\"num\">").Append(cv.OutOfFold.Rows.ToString("N0", CultureInfo.InvariantCulture)).Append("</td>")
+            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.Mad)).Append("</td>")
+            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.Rms)).Append("</td>")
+            .Append("<td class=\"num\">").Append(cv.OutOfFold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture)).Append("%</td>")
+            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.PearsonR)).Append("</td></tr>");
+
+        html.Append("<tr class=\"spread\"><td>spread</td><td class=\"num\"></td>")
+            .Append("<td class=\"num\">").Append(PlusMinus(cv.MadSpread)).Append("</td>")
+            .Append("<td class=\"num\">").Append(PlusMinus(cv.RmsSpread)).Append("</td>")
+            .Append("<td class=\"num\">").Append(PlusMinus(cv.MadReductionSpread)).Append("</td>")
+            .Append("<td class=\"num\">").Append(PlusMinus(cv.PearsonRSpread)).Append("</td></tr>");
+
+        html.Append("</table><figcaption>Spread is the standard deviation across folds.</figcaption>");
+        html.Append("</figure>");
+
+        html.Append("<div class=\"verdict\"><strong>Optimism ")
+            .Append(Format(cv.OptimismMad)).Append(" Th.</strong> The ensemble scores ")
+            .Append(Format(cv.InSample.Mad))
+            .Append(" Th on the rows it was built from and ")
+            .Append(Format(cv.OutOfFold.Mad))
+            .Append(" Th on peptides it had not seen. ")
+            .Append(OptimismVerdict(cv))
+            .Append("</div>");
+    }
+
+    private static string PlusMinus(double value) =>
+        double.IsNaN(value) ? "n/a" : "+/-" + value.ToString("0.0000", CultureInfo.InvariantCulture);
+
+    private static string OptimismVerdict(CrossValidationReport cv)
+    {
+        if (!(cv.OutOfFold.Mad > 0)) return "The gap cannot be assessed.";
+
+        double relative = cv.OptimismMad / cv.OutOfFold.Mad;
+        return relative switch
+        {
+            < 0.05 => "The gap is negligible: the model generalizes to peptides it has never seen.",
+            < 0.15 => "The gap is modest.",
+            < 0.30 => "The gap is substantial - the model is partly memorizing individual peptides.",
+            _ => "The gap is large. Treat any in-sample figure as meaningless here.",
+        };
     }
 
     private static void AppendSummaryTables(
@@ -308,7 +395,11 @@ public static class QcHtmlReport
           margin: 20px 0 0; padding: 14px; background: var(--card);
           border: 1px solid var(--border); border-radius: 4px;
         }
-        figcaption { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+        figcaption { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+        table.folds { font-size: 13px; }
+        table.folds th, table.folds td { padding: 4px 10px 4px 0; }
+        table.folds tr.total td { border-top: 1px solid var(--border); font-weight: 600; }
+        table.folds tr.spread td { color: var(--muted); }
         svg { display: block; }
         """;
 }

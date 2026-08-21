@@ -38,6 +38,20 @@ public sealed class SpectralLibrary
     /// <summary>Only populated when per-match reporting is requested; null otherwise.</summary>
     public string[]? ModifiedSequence { get; init; }
 
+    /// <summary>
+    /// Peptide identity per entry, as a dense index. Entries whose modified sequence is the
+    /// same share a value, so grouping rows by this groups them by peptide across charge
+    /// states and across the duplicate entries a report can produce for one precursor.
+    /// </summary>
+    /// <remarks>
+    /// An int rather than the sequence itself, because the point is only whether two entries
+    /// are the same peptide, and a plate-scale library has millions of entries. This is what
+    /// cross-validation folds are assigned over: fragments of one peptide recur across many
+    /// spectra with identical theoretical m/z, so splitting them across a train/test boundary
+    /// lets the model memorize that m/z rather than learn the instrument's error.
+    /// </remarks>
+    public required int[] PeptideGroup { get; init; }
+
     /// <summary>Theoretical (library) fragment m/z. This is the calibration ground truth.</summary>
     public required double[] FragmentMz { get; init; }
 
@@ -83,6 +97,9 @@ public sealed class SpectralLibraryBuilder
     private readonly List<double> _rtEnd = new();
     private readonly List<int> _fragmentStart = new();
     private readonly List<string>? _modifiedSequence;
+    private readonly List<int> _peptideGroup = new();
+    private readonly Dictionary<string, int> _peptideGroupIds = new(StringComparer.Ordinal);
+    private int _nextPeptideGroupId;
 
     private readonly List<double> _fragmentMz = new();
     private readonly List<float> _fragmentIntensity = new();
@@ -106,6 +123,7 @@ public sealed class SpectralLibraryBuilder
     public int BeginEntry(string modifiedSequence, int charge, double precursorMz, double rtStart, double rtEnd)
     {
         _fragmentStart.Add(_fragmentMz.Count);
+        _peptideGroup.Add(GroupIdFor(modifiedSequence));
         _precursorMz.Add(precursorMz);
         _precursorCharge.Add(charge);
         _rtStart.Add(rtStart);
@@ -156,6 +174,26 @@ public sealed class SpectralLibraryBuilder
         _modifiedSequence?.RemoveAt(last);
     }
 
+    /// <summary>
+    /// Dense id for a peptide sequence. A reader with no sequence to give - some formats
+    /// carry none - gets one group per entry, which degrades cross-validation to
+    /// precursor-level grouping rather than silently pooling unrelated entries together.
+    /// </summary>
+    private int GroupIdFor(string modifiedSequence)
+    {
+        // One shared counter, so an unnamed entry can never be handed an id that a named
+        // one already owns.
+        if (string.IsNullOrEmpty(modifiedSequence)) return _nextPeptideGroupId++;
+
+        if (!_peptideGroupIds.TryGetValue(modifiedSequence, out int id))
+        {
+            id = _nextPeptideGroupId++;
+            _peptideGroupIds[modifiedSequence] = id;
+        }
+
+        return id;
+    }
+
     public SpectralLibrary Build()
     {
         var starts = new int[_fragmentStart.Count + 1];
@@ -170,6 +208,7 @@ public sealed class SpectralLibraryBuilder
             RtEnd = _rtEnd.ToArray(),
             FragmentStart = starts,
             ModifiedSequence = _modifiedSequence?.ToArray(),
+            PeptideGroup = _peptideGroup.ToArray(),
             FragmentMz = _fragmentMz.ToArray(),
             FragmentIntensity = _fragmentIntensity.ToArray(),
             FragmentIonType = _fragmentIonType.ToArray(),

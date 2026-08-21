@@ -30,8 +30,8 @@ import xgboost as xgb
 # Columns the dump carries that are not model features.
 NON_FEATURES = {
     "scan_number", "retention_time", "entry_index", "fragment_index", "peptide",
-    "ion_annotation", "expected_mz", "observed_mz", "delta_mz", "observed_intensity",
-    "predicted_delta_mz", "residual",
+    "peptide_group", "ion_annotation", "expected_mz", "observed_mz", "delta_mz",
+    "observed_intensity", "predicted_delta_mz", "residual",
 }
 
 # MzCalibrator's defaults, which are XGBoost's defaults apart from these four.
@@ -47,6 +47,18 @@ def robust(values: np.ndarray) -> tuple[float, float]:
     return float(np.std(values)), float(np.median(np.abs(values - median)))
 
 
+def assign_folds(groups: np.ndarray, folds: int) -> np.ndarray:
+    """Reproduce MARS's fold assignment exactly.
+
+    Distinct peptide groups sorted ascending, then dealt round-robin. No PRNG, so both
+    implementations land on the same split from the same input, and the two models are
+    compared on identical training and held-out rows rather than merely similar ones.
+    """
+    distinct = np.unique(groups)
+    fold_of_group = {g: i % folds for i, g in enumerate(distinct)}
+    return np.array([fold_of_group[g] for g in groups], dtype=int)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csharp", required=True, type=Path, help="--dump-predictions output")
@@ -54,6 +66,8 @@ def main() -> int:
     parser.add_argument("--max-depth", type=int, default=MAX_DEPTH)
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE)
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--cv-folds", type=int, default=5,
+                        help="peptide-grouped folds for the Python side; 0 to skip")
     args = parser.parse_args()
 
     frame = pd.read_csv(args.csharp, float_precision="round_trip")
@@ -83,23 +97,47 @@ def main() -> int:
     weight = used["observed_intensity"].to_numpy(dtype=float)
     weight = weight / weight.mean()
 
-    model = xgb.XGBRegressor(
-        n_estimators=args.n_estimators,
-        max_depth=args.max_depth,
-        learning_rate=args.learning_rate,
-        random_state=args.seed,
-        n_jobs=-1,
-        objective="reg:squarederror",
-    )
-    model.fit(x, y, sample_weight=weight, verbose=False)
+    def fit(rows: np.ndarray) -> xgb.XGBRegressor:
+        model = xgb.XGBRegressor(
+            n_estimators=args.n_estimators,
+            max_depth=args.max_depth,
+            learning_rate=args.learning_rate,
+            random_state=args.seed,
+            n_jobs=-1,
+            objective="reg:squarederror",
+        )
+        model.fit(x[rows], y[rows], sample_weight=weight[rows], verbose=False)
+        return model
 
+    # ---- peptide-grouped cross-validation, the same split MARS used -------------------
+    if args.cv_folds >= 2 and "peptide_group" in used.columns:
+        groups = used["peptide_group"].to_numpy()
+        fold_of_row = assign_folds(groups, args.cv_folds)
+        out_of_fold = np.empty_like(y)
+
+        print(f"Python cross-validation ({args.cv_folds} folds over "
+              f"{len(np.unique(groups)):,} peptides, same split as MARS)")
+        for fold in range(args.cv_folds):
+            held_out = fold_of_row == fold
+            out_of_fold[held_out] = fit(~held_out).predict(x[held_out]).astype(float)
+            residual = y[held_out] - out_of_fold[held_out]
+            print(f"  fold {fold + 1}: {held_out.sum():>8,} rows, "
+                  f"MAD {np.median(np.abs(residual - np.median(residual))):.4f} Th")
+
+        oof_std, oof_mad = robust(y - out_of_fold)
+        print(f"  pooled out-of-fold: MAD {oof_mad:.4f} Th, std {oof_std:.4f} Th")
+        print("  Compare against the out-of-fold MAD in mars_qc_summary.txt: both models were")
+        print("  trained on the same rows and scored on the same held-out peptides.")
+        print()
+
+    model = fit(np.arange(len(y)))
     python_prediction = model.predict(x).astype(float)
     csharp_prediction = used["predicted_delta_mz"].to_numpy(dtype=float)
 
     difference = csharp_prediction - python_prediction
     correlation = float(np.corrcoef(csharp_prediction, python_prediction)[0, 1])
 
-    print("Predictions on the same rows")
+    print("Predictions on the same rows (both trained on everything, so in-sample)")
     print(f"  Pearson r                    {correlation:.6f}")
     print(f"  mean difference              {difference.mean():+.6f} Th")
     print(f"  RMS difference               {np.sqrt((difference ** 2).mean()):.6f} Th")

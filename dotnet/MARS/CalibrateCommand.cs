@@ -60,6 +60,8 @@ public static class CalibrateCommand
             LearningRate = args.Double("learning-rate") ?? 0.1,
             Seed = args.Int("seed") ?? 42,
             ValidationSplit = args.Double("validation-split") ?? 0.2,
+            CvFolds = args.Int("cv-folds") ?? 5,
+            CvModel = ParseCvModel(args.String("cv-model")),
             MaxTrainingRows = args.Int("max-training-rows") ?? 0,
             MaxDegreeOfParallelism = args.Int("threads") ?? -1,
         };
@@ -300,6 +302,13 @@ public static class CalibrateCommand
         return false;
     }
 
+    private static CvModel ParseCvModel(string? value) => value?.ToLowerInvariant() switch
+    {
+        null or "ensemble" => CvModel.Ensemble,
+        "refit" => CvModel.Refit,
+        _ => throw new FormatException($"--cv-model expects ensemble or refit, got '{value}'."),
+    };
+
     private static MonotonicityPolicy ParseMonotonicity(string? value) => value?.ToLowerInvariant() switch
     {
         null or "clamp" => MonotonicityPolicy.ClampAscending,
@@ -348,6 +357,7 @@ public static class CalibrateCommand
             Features = features,
             ImportanceNames = importanceNames,
             Importance = calibrator.Statistics?.PermutationImportance ?? Array.Empty<double>(),
+            CrossValidation = calibrator.CrossValidation,
         };
     }
 
@@ -385,7 +395,14 @@ public static class CalibrateCommand
                   --n-estimators <n>     Boosting rounds (default 100)
                   --max-depth <n>        Tree depth (default 6)
                   --learning-rate <x>    Shrinkage (default 0.1)
-                  --validation-split <x> Held-out fraction (default 0.2)
+                  --cv-folds <n>         Cross-validation folds, split by peptide
+                                         (default 5). The model becomes the ensemble of
+                                         the folds. 0 trains a single model instead
+                  --cv-model <mode>      What to apply after cross-validating: ensemble
+                                         (default) averages the fold models; refit trains
+                                         one model on all rows, which corrects about
+                                         <folds> times faster
+                  --validation-split <x> Held-out fraction for --cv-folds 0 (default 0.2)
                   --max-training-rows <n>
                                          Cap training rows by even stride (default no cap)
                   --min-training-rows <n>

@@ -123,13 +123,22 @@ surface than one model per file.
 | `--n-estimators <n>` | 100 | Boosting rounds |
 | `--max-depth <n>` | 6 | Tree depth |
 | `--learning-rate <x>` | 0.1 | Shrinkage |
-| `--validation-split <x>` | 0.2 | Held-out fraction. 0 trains on everything |
+| `--cv-folds <n>` | 5 | Cross-validation folds, split by peptide. 0 trains a single model |
+| `--cv-model <mode>` | `ensemble` | What gets applied: `ensemble` averages the fold models, `refit` trains one model on all rows |
+| `--validation-split <x>` | 0.2 | Held-out fraction, used only when `--cv-folds 0` |
 | `--max-training-rows <n>` | no cap | Cap training rows by even stride |
 | `--min-training-rows <n>` | 1000 | Refuse to fit below this many matches (exit 2) |
 | `--seed <n>` | 42 | Random seed |
 
 The defaults are XGBoost's defaults, which is not a coincidence: see
 [the model](model.md#hyperparameters). There is rarely a reason to change them.
+
+**`--cv-model` is a speed decision, not an accuracy one.** Correcting a file scores every
+peak against every model, so a 5-fold ensemble makes the correction pass - which dominates
+a run - about five times slower. Measured on one 1.47 GB Stellar file: 52 s for
+`--cv-folds 0`, 91 s for `--cv-model refit`, 266 s for the default ensemble. All three
+report the same accuracy; only the first reports it dishonestly. See
+[the model](model.md#cross-validation).
 
 ### Output
 

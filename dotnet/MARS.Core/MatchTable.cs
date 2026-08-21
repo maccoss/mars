@@ -81,6 +81,13 @@ public sealed class MatchTable
     /// <summary>Sample weight source: intensity of the matched peak.</summary>
     public GrowableArray<double> ObservedIntensity { get; } = new();
 
+    /// <summary>
+    /// Peptide identity of the library entry this row came from. Cross-validation folds
+    /// are assigned over this so a peptide never straddles a train/test boundary; it is
+    /// always collected, since the split depends on it whether or not anything else does.
+    /// </summary>
+    public GrowableArray<int> PeptideGroup { get; } = new();
+
     public GrowableArray<int>? ScanNumber { get; }
 
     public GrowableArray<int>? LibraryEntryIndex { get; }

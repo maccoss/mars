@@ -50,11 +50,45 @@ public static class QcReport
         text.AppendLine();
         text.AppendLine();
 
+        if (calibrator.CrossValidation is CrossValidationReport cv)
+        {
+            text.AppendLine("Cross-Validation (folds split by peptide)");
+            text.AppendLine(new string('=', 40));
+            text.AppendLine($"Folds: {cv.Folds}  over {cv.Groups:N0} peptides");
+            text.AppendLine();
+            text.AppendLine("  fold        rows      MAD Th     RMS Th   reduction   Pearson r");
+            for (int i = 0; i < cv.PerFold.Length; i++)
+            {
+                FoldMetrics fold = cv.PerFold[i];
+                text.AppendLine(
+                    $"  {i + 1,4}  {fold.Rows,10:N0}  {fold.Mad,10:F4} {fold.Rms,10:F4}" +
+                    $"  {fold.MadReduction,9:F1}%  {fold.PearsonR,10:F4}");
+            }
+
+            text.AppendLine();
+            text.AppendLine(
+                $"  pooled out-of-fold: MAD {cv.OutOfFold.Mad:F4} Th, RMS {cv.OutOfFold.Rms:F4} Th, " +
+                $"r {cv.OutOfFold.PearsonR:F4}");
+            text.AppendLine(
+                $"  spread across folds: MAD {cv.MadSpread:F4} Th, RMS {cv.RmsSpread:F4} Th, " +
+                $"r {cv.PearsonRSpread:F4}");
+            text.AppendLine(
+                $"  in-sample MAD {cv.InSample.Mad:F4} Th; optimism {cv.OptimismMad:F4} Th " +
+                $"({OptimismVerdict(cv)})");
+            text.AppendLine();
+            text.AppendLine("  Every row above was scored by a model that never saw its peptide.");
+            text.AppendLine("  The before/after figures at the top use these out-of-fold predictions.");
+            text.AppendLine();
+            text.AppendLine();
+        }
+
         text.AppendLine("Calibration Model Summary");
         text.AppendLine(new string('=', 40));
         text.AppendLine($"Matched fragments: {stats.RowsMatched:N0}");
         text.AppendLine($"Training samples:  {stats.RowsUsed:N0}");
-        text.AppendLine($"Train/Val split:   {stats.RowsTrain:N0} / {stats.RowsValidation:N0}");
+        text.AppendLine(calibrator.CrossValidation is null
+            ? $"Train/Val split:   {stats.RowsTrain:N0} / {stats.RowsValidation:N0}"
+            : $"Models:            {calibrator.Models.Count} fold models, averaged");
         text.AppendLine($"Spectra examined:  {matchStatistics.SpectraSeen:N0}");
         text.AppendLine($"Library precursors matched: {matchStatistics.UniqueEntriesMatched:N0}");
         text.AppendLine();
@@ -98,6 +132,25 @@ public static class QcReport
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         File.WriteAllText(path, text.ToString());
+    }
+
+    /// <summary>
+    /// Plain-language reading of the gap between in-sample and out-of-fold accuracy. The
+    /// number alone does not say whether it is large, and "large" here is relative to the
+    /// error being corrected rather than absolute.
+    /// </summary>
+    private static string OptimismVerdict(CrossValidationReport cv)
+    {
+        if (!(cv.OutOfFold.Mad > 0)) return "not assessable";
+
+        double relative = cv.OptimismMad / cv.OutOfFold.Mad;
+        return relative switch
+        {
+            < 0.05 => "negligible; the model generalizes to unseen peptides",
+            < 0.15 => "modest",
+            < 0.30 => "substantial: the model is partly memorizing peptides",
+            _ => "large: treat the in-sample figure as meaningless",
+        };
     }
 
     private static void AppendSummary(StringBuilder text, ErrorSummary summary)

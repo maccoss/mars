@@ -87,6 +87,26 @@ therefore correctable at all:
 
 Empty cells are simply where no fragment matched.
 
+## Cross-validation
+
+*`calibrate` only.*
+
+Per-fold accuracy, the pooled out-of-fold figure, and the spread across folds. Folds are
+split by peptide, so every row was scored by a model that never saw its peptide.
+
+Read the **spread** row. One held-out number tells you how the model did on one split; five
+tell you whether that number was luck. A tight spread means the estimate is stable; a wide
+one means the cohort has regions the model handles very differently and the headline figure
+is an average over them.
+
+Then read **optimism**: how much better the model looks on rows it was built from than on
+peptides it had not seen. A small gap means the model is generalizing. A large one means it
+is partly memorizing individual peptides, and no in-sample figure from that run is worth
+quoting.
+
+Every before/after number elsewhere in the report uses the out-of-fold predictions, so
+there is no optimistic figure hiding in the summary.
+
 ## Feature importance
 
 *`calibrate` only - there is no model to interrogate after `qc`.*

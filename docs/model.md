@@ -174,6 +174,95 @@ The one thing that is *not* bit-identical is the compressed bytes of the output 
 different platforms ship different zlib builds. Decoded values are identical. Use
 `mars compare`, not `cmp`. See [mzML passthrough](mzml-passthrough.md#binary-arrays).
 
+## Cross-validation
+
+By default MARS trains **five models, one per fold, with folds split by peptide**, and
+reports what each scored on the peptides it did not see.
+
+### Why the split has to be by peptide
+
+This is the part that matters most, and it is easy to get wrong.
+
+A peptide's fragments recur across hundreds of spectra, always with the same theoretical
+m/z - and `fragment_mz` is a model feature. Split rows at random and the same peptide lands
+on both sides of the boundary, so the model can memorize "this exact m/z has that error"
+instead of learning anything about the instrument. The held-out number then measures recall
+rather than generalization, and it comes out flattering.
+
+Splitting by peptide closes that route. Every reported number comes from a model that never
+saw the peptide it is scoring, which is what makes it an estimate of performance on data
+MARS was not trained on.
+
+Folds are assigned by sorting the distinct peptides and dealing them round-robin. No random
+seed is involved, so the split is reproducible from the input alone, and every fold gets an
+equal number of peptides. This follows Osprey's Percolator implementation, which splits its
+folds the same way (`PercolatorSampling.CreateStratifiedFoldsByPeptide`).
+
+### What gets applied
+
+The default is the **ensemble**: a prediction is the mean of the five fold models. That is
+what Osprey's Percolator does on its tree path - the linear path can average fold weight
+vectors, because a dot product is linear in the weights, but trees cannot be averaged that
+way, so it averages the fold *scores* instead. The model that ships is then exactly the
+model that was measured.
+
+Unlike Percolator, no cross-fold score calibration is needed. An SVM margin means nothing
+across folds until it is calibrated; MARS predicts a mass error in Th, the same physical
+quantity in every fold.
+
+`--cv-model refit` instead fits one model on every row after cross-validating, and applies
+that. The cross-validated numbers then describe the procedure rather than that exact model,
+which is the ordinary way cross-validation is read, and the model has seen strictly more
+data than any fold model did.
+
+**The difference is speed.** Correcting a file scores every peak against every model:
+
+| | one 1.47 GB Stellar file | reported MAD |
+|---|---|---|
+| `--cv-folds 0` | 52 s | 0.0432 Th, in-sample and optimistic |
+| `--cv-model refit` | 91 s | 0.0445 Th, out-of-fold |
+| `--cv-model ensemble` (default) | 266 s | 0.0445 Th, out-of-fold |
+
+Training the five models costs 16 s of that. The rest of the gap is the correction pass.
+
+### What it reports
+
+Per fold and pooled: median absolute residual, RMS, standard deviation, the reduction in
+median absolute error, and Pearson r between predicted and observed error. Plus the
+standard deviation of each across folds, which is what says whether a single held-out
+number was luck.
+
+On one Stellar run, 146,515 fragments over 2,966 peptides:
+
+```
+  fold        rows      MAD Th     RMS Th   reduction   Pearson r
+     1      29,542      0.0452     0.0860       44.6%      0.6904
+     2      29,590      0.0442     0.0856       44.7%      0.6872
+     3      29,386      0.0443     0.0856       44.1%      0.6899
+     4      28,902      0.0448     0.0860       44.3%      0.6889
+     5      29,095      0.0445     0.0861       44.3%      0.6845
+
+  pooled out-of-fold: MAD 0.0446 Th, RMS 0.0858 Th, r 0.6883
+  spread across folds: MAD 0.0004 Th
+  in-sample MAD 0.0431 Th; optimism 0.0015 Th
+```
+
+**Optimism** is the gap between what the model scores on rows it was built from and what it
+scores on unseen peptides. Here it is 0.0015 Th, about 3% of the error being corrected, so
+the model is generalizing rather than memorizing. A large gap would mean the opposite, and
+would say that any in-sample figure is not worth quoting.
+
+The before/after numbers everywhere else - the QC summary, the figures, the verdict line -
+use these out-of-fold predictions. No optimistic number is reported anywhere as though it
+were the result.
+
+### When there are too few peptides
+
+Cross-validation needs at least as many distinct peptides as folds, and in practice many
+more. MARS refuses rather than producing folds of one or two peptides, and says how many it
+found. `--cv-folds 0` falls back to a single fit with a held-out split - which is also
+split by peptide, for the same reason.
+
 ## Permutation importance
 
 The QC report ranks features by permutation importance: shuffle one feature's values across
@@ -224,9 +313,27 @@ deliberately does not reproduce; see
 
 ## How close is this to XGBoost?
 
-Close, and slightly better on the reference data. Both were trained on identical rows - the
-features are verified bit-identical, see [parity](python-parity.md) - with identical
-hyperparameters and identical weighting, on 146,515 fragments from one Stellar run:
+Indistinguishable, once both are measured honestly. Both were trained on identical rows -
+the features are verified bit-identical, see [parity](python-parity.md) - with identical
+hyperparameters, identical weighting, and the same peptide-grouped fold split, on 146,515
+fragments over 2,966 peptides from one Stellar run.
+
+**Out-of-fold, which is the comparison that counts:**
+
+| fold | C# MAD (Th) | Python MAD (Th) |
+|---|---|---|
+| 1 | 0.0452 | 0.0451 |
+| 2 | 0.0440 | 0.0440 |
+| 3 | 0.0440 | 0.0440 |
+| 4 | 0.0448 | 0.0448 |
+| 5 | 0.0445 | 0.0446 |
+| **pooled** | **0.0445** | **0.0445** |
+
+Same rows, same held-out peptides, same answer to four decimal places. An earlier
+in-sample comparison put C# marginally ahead; cross-validation shows that gap was not real.
+
+**In-sample**, both trained on everything, which answers a different question - whether the
+two learn the same *function* rather than merely reach the same accuracy:
 
 | | value |
 |---|---|
@@ -253,8 +360,8 @@ mars calibrate --mzml run.mzML --prism-csv report.csv --no-dedupe-library \
 python dotnet/scripts/compare_models.py --csharp cs.csv
 ```
 
-> The comparison above is in-sample: both models were trained on every row and scored on
-> the same rows. That is the right way to ask whether two implementations learn the same
-> function, but it does not distinguish a better fit from more overfitting. A held-out
-> comparison needs both to train on an identical subset, which the dump does not currently
-> mark.
+The dump carries a `peptide_group` column, and `compare_models.py` reproduces MARS's fold
+assignment from it - sort the distinct peptides, deal round-robin - so both sides train on
+exactly the same rows and score exactly the same held-out peptides, rather than merely
+similar ones. Pass `--cv-folds 0` to skip the Python-side cross-validation and compare
+in-sample only.

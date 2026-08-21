@@ -26,7 +26,7 @@ public static class MatchDumpWriter
     private static readonly string[] KeyColumns =
     {
         "scan_number", "retention_time", "entry_index", "fragment_index",
-        "peptide", "ion_annotation", "expected_mz", "observed_mz",
+        "peptide_group", "peptide", "ion_annotation", "expected_mz", "observed_mz",
         "delta_mz", "observed_intensity",
     };
 
@@ -96,6 +96,10 @@ public static class MatchDumpWriter
             line.Append(entry.ToString(CultureInfo.InvariantCulture));
             line.Append(',');
             line.Append(fragment.ToString(CultureInfo.InvariantCulture));
+            line.Append(',');
+            // The peptide, as the dense id folds are dealt over. Emitted so another
+            // implementation can reproduce exactly the same split rather than approximate it.
+            line.Append(table.PeptideGroup.Items[row].ToString(CultureInfo.InvariantCulture));
             line.Append(',');
             AppendQuoted(line, library.ModifiedSequence is null ? string.Empty : library.ModifiedSequence[entry]);
             line.Append(',');

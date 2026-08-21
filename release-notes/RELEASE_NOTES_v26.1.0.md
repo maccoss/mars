@@ -67,6 +67,22 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   depth, how to read the QC figures, the mzML passthrough contract, a map of the code, and
   how the implementation is verified against the Python one.
 
+- **Cross-validation by default, with folds split by peptide.** MARS trains five models,
+  one per fold, and every accuracy it reports comes from a model that never saw the peptide
+  it is scoring. This matters because a peptide's fragments recur across hundreds of spectra
+  with the same theoretical m/z, and `fragment_mz` is a feature: splitting rows rather than
+  peptides lets the model memorize a peptide's error and report an accuracy it cannot reach
+  on anything new. The report gives per-fold figures, the pooled out-of-fold figure, the
+  spread across folds, and the gap between in-sample and out-of-fold accuracy. On the
+  reference Stellar run that gap is 0.0015 Th, about 3% of the error being corrected, so the
+  model generalizes rather than memorizes. `--cv-folds 0` restores a single fit; the held-out
+  split in that mode is now also by peptide.
+- **The applied model is the ensemble of the folds**, averaging their predictions, which is
+  what Osprey's Percolator applies on its tree path. `--cv-model refit` instead fits one
+  model on all rows after cross-validating, which corrects about five times faster: on one
+  1.47 GB file, 266 s for the ensemble against 91 s for the refit and 52 s for a single fit.
+  All three report the same accuracy; only the last reports it optimistically.
+
 ## Bug Fixes
 
 Four defects found while transcribing the Python implementation. Three affect files that
@@ -114,6 +130,9 @@ Measured on 16 logical cores.
 
 ## Breaking Changes
 
+- **Model files now carry an ensemble.** The format is version 2: `models` replaces the
+  single `model`, one entry per fold. Version 1 files still load, as a one-element
+  ensemble, and predict identically. A five-fold model file is about five times larger.
 - **Model files are not interchangeable with the Python implementation.** The Python model
   is a pickle of an XGBoost booster; the C# model is versioned JSON. Retrain rather than
   convert.

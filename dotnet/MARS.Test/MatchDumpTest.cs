@@ -47,6 +47,7 @@ public sealed class MatchDumpTest
         table.Set(MarsFeature.LogIntensity, logIntensity);
         table.DeltaMz.Add(deltaMz);
         table.ObservedIntensity.Add(observedIntensity);
+        table.PeptideGroup.Add(entry);
         table.ScanNumber!.Add(scan);
         table.LibraryEntryIndex!.Add(entry);
         table.FragmentIndex!.Add(fragment);
@@ -66,7 +67,7 @@ public sealed class MatchDumpTest
 
             Assert.Equal(3, lines.Length);
             Assert.Equal(
-                "scan_number,retention_time,entry_index,fragment_index,peptide,ion_annotation," +
+                "scan_number,retention_time,entry_index,fragment_index,peptide_group,peptide,ion_annotation," +
                 "expected_mz,observed_mz,delta_mz,observed_intensity," +
                 "precursor_mz,fragment_mz,log_intensity",
                 lines[0]);
@@ -75,18 +76,19 @@ public sealed class MatchDumpTest
             Assert.Equal("101", first[0]);
             Assert.Equal("0", first[2]);
             Assert.Equal("0", first[3]);
-            Assert.Equal("\"PEPTIDER\"", first[4]);
-            Assert.Equal("y5+1", first[5]);
-            Assert.Equal(600.30, double.Parse(first[6], CultureInfo.InvariantCulture), 6);
-            Assert.Equal(600.35, double.Parse(first[7], CultureInfo.InvariantCulture), 6);
+            Assert.Equal("0", first[4]);
+            Assert.Equal("\"PEPTIDER\"", first[5]);
+            Assert.Equal("y5+1", first[6]);
+            Assert.Equal(600.30, double.Parse(first[7], CultureInfo.InvariantCulture), 6);
+            Assert.Equal(600.35, double.Parse(first[8], CultureInfo.InvariantCulture), 6);
 
             // The second row points at the second entry's only fragment, which is index 2 in
             // the flat arrays. Getting this wrong would silently label rows with another
             // peptide's identity, so it is asserted rather than assumed.
             string[] second = lines[2].Split(',');
-            Assert.Equal("\"SEQ[+80.0]UENCE\"", second[4]);
-            Assert.Equal("y7+1", second[5]);
-            Assert.Equal(800.50, double.Parse(second[6], CultureInfo.InvariantCulture), 6);
+            Assert.Equal("\"SEQ[+80.0]UENCE\"", second[5]);
+            Assert.Equal("y7+1", second[6]);
+            Assert.Equal(800.50, double.Parse(second[7], CultureInfo.InvariantCulture), 6);
         }
         finally
         {
@@ -106,8 +108,8 @@ public sealed class MatchDumpTest
             // "R" formatting is what makes a dump usable as a comparison oracle: a value that
             // rounds on the way out cannot be differenced against another implementation at
             // the precision that matters for m/z.
-            Assert.Equal(1234.5, double.Parse(columns[9], CultureInfo.InvariantCulture));
-            Assert.Equal(500.25, double.Parse(columns[10], CultureInfo.InvariantCulture));
+            Assert.Equal(1234.5, double.Parse(columns[10], CultureInfo.InvariantCulture));
+            Assert.Equal(500.25, double.Parse(columns[11], CultureInfo.InvariantCulture));
         }
         finally
         {
@@ -126,7 +128,7 @@ public sealed class MatchDumpTest
 
             // NaN is how an undefined feature reaches the model, and row selection drops on
             // it. A blank would read as "missing column" instead.
-            Assert.Equal("NaN", columns[12]);
+            Assert.Equal("NaN", columns[13]);
         }
         finally
         {

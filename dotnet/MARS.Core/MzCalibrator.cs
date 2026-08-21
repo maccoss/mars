@@ -7,6 +7,19 @@ using pwiz.Osprey.ML;
 
 namespace MARS.Core;
 
+/// <summary>What a cross-validated fit leaves behind to apply to data.</summary>
+public enum CvModel
+{
+    /// <summary>Average the fold models. Exactly the models that were measured.</summary>
+    Ensemble,
+
+    /// <summary>
+    /// Refit one model on every row after cross-validating. Corrects at single-model speed
+    /// and sees more data than any fold model did.
+    /// </summary>
+    Refit,
+}
+
 /// <summary>
 /// Hyperparameters, transcribed from the Python MzCalibrator, which constructs
 /// xgboost.XGBRegressor(n_estimators=100, max_depth=6, learning_rate=0.1,
@@ -44,6 +57,32 @@ public sealed class CalibrationOptions
 
     /// <summary>Fraction of rows held out to report validation error. 0 disables the split.</summary>
     public double ValidationSplit { get; set; } = 0.2;
+
+    /// <summary>
+    /// Cross-validation folds. 2 or more trains one model per fold and makes the calibrator
+    /// their ensemble; 0 or 1 falls back to a single fit with a held-out split.
+    /// </summary>
+    /// <remarks>
+    /// Folds are assigned by peptide, never by row, so every reported number comes from a
+    /// model that never saw the peptide it is scoring. Cross-validation costs one training
+    /// round per fold, which is a minority of a run's wall clock because matching dominates.
+    /// </remarks>
+    public int CvFolds { get; set; } = 5;
+
+    /// <summary>
+    /// Whether the model that gets applied is the fold ensemble or a single model refitted
+    /// on every row. Cross-validation runs either way, and reports the same numbers.
+    /// </summary>
+    /// <remarks>
+    /// This is a speed decision, not an accuracy one. The ensemble is what Osprey's
+    /// Percolator applies, and it is what was measured - but correcting a file scores every
+    /// peak against every fold model, so a 5-fold ensemble makes the correction pass about
+    /// five times slower, and correction dominates a calibrate run. Refitting costs one
+    /// extra training round and leaves correction at its original speed; the
+    /// cross-validated numbers then describe the procedure rather than that exact model,
+    /// which is the ordinary way cross-validation is read.
+    /// </remarks>
+    public CvModel CvModel { get; set; } = CvModel.Ensemble;
 
     /// <summary>
     /// Weight training rows by observed peak intensity, normalized to mean 1. More intense
@@ -101,21 +140,37 @@ public sealed class MzCalibrator
 {
     internal MzCalibrator(
         FeatureSet features,
-        GradientBoostedTrees model,
+        IReadOnlyList<GradientBoostedTrees> models,
         double absoluteTimeOffset,
         CalibrationOptions options,
-        TrainingStatistics? statistics)
+        TrainingStatistics? statistics,
+        CrossValidationReport? crossValidation)
     {
+        if (models.Count == 0)
+            throw new ArgumentException("A calibrator needs at least one model.", nameof(models));
+
         Features = features;
-        Model = model;
+        Models = models;
         AbsoluteTimeOffset = absoluteTimeOffset;
         Options = options;
         Statistics = statistics;
+        CrossValidation = crossValidation;
     }
 
     public FeatureSet Features { get; }
 
-    public GradientBoostedTrees Model { get; }
+    /// <summary>
+    /// The fold models. One when a single fit was requested, otherwise one per
+    /// cross-validation fold, and a prediction is their mean.
+    /// </summary>
+    /// <remarks>
+    /// Trees cannot be averaged the way linear weights can, so the ensemble averages scores
+    /// rather than models - the same choice Osprey's Percolator makes on its tree path.
+    /// </remarks>
+    public IReadOnlyList<GradientBoostedTrees> Models { get; }
+
+    /// <summary>Cross-validation results, or null when a single model was fitted.</summary>
+    public CrossValidationReport? CrossValidation { get; }
 
     /// <summary>
     /// Seconds subtracted from every raw acquisition timestamp to produce the
@@ -136,7 +191,14 @@ public sealed class MzCalibrator
     public TrainingStatistics? Statistics { get; }
 
     /// <summary>Predicted mass error in Th. Subtract from the observed m/z to correct it.</summary>
-    public double PredictDelta(double[] featureRow) => Model.ScoreSingle(featureRow);
+    public double PredictDelta(double[] featureRow)
+    {
+        if (Models.Count == 1) return Models[0].ScoreSingle(featureRow);
+
+        double sum = 0;
+        for (int i = 0; i < Models.Count; i++) sum += Models[i].ScoreSingle(featureRow);
+        return sum / Models.Count;
+    }
 
     /// <summary>
     /// Predicted mass error for every row of a match table, parallel to the table's rows.
@@ -173,7 +235,7 @@ public sealed class MzCalibrator
                 row[j] = value;
             }
 
-            predictions[i] = usable ? Model.ScoreSingle(row) : double.NaN;
+            predictions[i] = usable ? PredictDelta(row) : double.NaN;
         }
 
         return predictions;
@@ -240,13 +302,21 @@ public sealed class MzCalibrator
             }
         }
 
-        (int[] trainIndex, int[] validationIndex) = SplitTrainValidation(rows.Length, options);
+        // Fold assignment needs each row's peptide, so a peptide's fragments cannot be split
+        // across a train/test boundary. Without this the model can memorize a peptide's
+        // fragment m/z values and every held-out number comes out optimistic.
+        if (table.PeptideGroup.Count != table.Count)
+        {
+            throw new InvalidOperationException(
+                $"The match table has {table.Count:N0} rows but {table.PeptideGroup.Count:N0} " +
+                "peptide group values. Every row needs one: folds and the held-out split are " +
+                "assigned over peptides, and falling back to row-random splitting would report " +
+                "an accuracy the model cannot reach on an unseen peptide.");
+        }
 
-        double[][] xTrain = Gather(x, trainIndex);
-        double[] yTrain = Gather(y, trainIndex);
-        double[]? wTrain = weights is null ? null : Gather(weights, trainIndex);
-
-        log?.Invoke($"Training on {trainIndex.Length:N0} rows, holding out {validationIndex.Length:N0}, {nFeat} features");
+        var groupOfRow = new int[rows.Length];
+        int[] groupColumn = table.PeptideGroup.Items;
+        for (int i = 0; i < rows.Length; i++) groupOfRow[i] = groupColumn[rows[i]];
 
         var gbtParams = new GbtParams
         {
@@ -267,11 +337,137 @@ public sealed class MzCalibrator
                 : options.MaxDegreeOfParallelism,
         };
 
-        GradientBoostedTrees model = GradientBoostedTrees.Train(xTrain, yTrain, gbtParams, wTrain);
+        if (options.CvFolds >= 2)
+        {
+            return FitCrossValidated(
+                features, x, y, weights, groupOfRow, gbtParams, options, absoluteTimeOffset,
+                table.Count, log);
+        }
 
-        var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null);
+        (int[] trainIndex, int[] validationIndex) =
+            PeptideFolds.SplitByGroup(groupOfRow, options.ValidationSplit, options.Seed);
+
+        log?.Invoke(
+            $"Training on {trainIndex.Length:N0} rows, holding out {validationIndex.Length:N0} " +
+            $"by peptide, {nFeat} features");
+
+        GradientBoostedTrees model = GradientBoostedTrees.Train(
+            Gather(x, trainIndex), Gather(y, trainIndex), gbtParams,
+            weights is null ? null : Gather(weights, trainIndex));
+
+        var single = new[] { model };
+        var calibrator = new MzCalibrator(features, single, absoluteTimeOffset, options, null, null);
         TrainingStatistics statistics = calibrator.Evaluate(x, y, trainIndex, validationIndex, table.Count, options);
-        return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics);
+        return new MzCalibrator(features, single, absoluteTimeOffset, options, statistics, null);
+    }
+
+    /// <summary>
+    /// Trains one model per fold and returns their ensemble.
+    /// </summary>
+    /// <remarks>
+    /// The ensemble is the model, not a stepping stone to one. Osprey's Percolator does the
+    /// same on its tree path: the linear path can average fold weight vectors because a dot
+    /// product is linear in the weights, but trees cannot be averaged that way, so it
+    /// averages the fold SCORES instead (see <c>PercolatorResults.FoldGbtModels</c> and
+    /// <c>PercolatorScorer.AverageGbtScore</c> in ProteoWizard). Averaging K models trained
+    /// on overlapping data is also steadier than any one of them, and costs no extra
+    /// training round.
+    /// <para>
+    /// Unlike Percolator, no cross-fold score calibration is needed. An SVM margin means
+    /// nothing across folds until it is calibrated; MARS predicts a mass error in Th, the
+    /// same physical quantity in every fold.
+    /// </para>
+    /// </remarks>
+    private static MzCalibrator FitCrossValidated(
+        FeatureSet features, double[][] x, double[] y, double[]? weights, int[] groupOfRow,
+        GbtParams gbtParams, CalibrationOptions options, double absoluteTimeOffset,
+        int matchedRows, Action<string>? log)
+    {
+        (int[] foldOfRow, int groupCount) = PeptideFolds.AssignFolds(groupOfRow, options.CvFolds);
+
+        if (groupCount < options.CvFolds)
+        {
+            throw new InvalidOperationException(
+                $"Only {groupCount} distinct peptides matched, which cannot be split into " +
+                $"{options.CvFolds} folds. Lower --cv-folds, or pass --cv-folds 0 to train a " +
+                "single model.");
+        }
+
+        log?.Invoke(
+            $"Cross-validating: {options.CvFolds} folds over {groupCount:N0} peptides, " +
+            $"{x.Length:N0} rows, {features.Count} features");
+
+        var models = new GradientBoostedTrees[options.CvFolds];
+        var perFold = new FoldMetrics[options.CvFolds];
+        var outOfFold = new double[x.Length];
+
+        for (int fold = 0; fold < options.CvFolds; fold++)
+        {
+            var trainRows = new List<int>(x.Length);
+            var heldOutRows = new List<int>((x.Length / options.CvFolds) + 1);
+            for (int i = 0; i < foldOfRow.Length; i++)
+            {
+                if (foldOfRow[i] == fold) heldOutRows.Add(i);
+                else trainRows.Add(i);
+            }
+
+            int[] trainIndex = trainRows.ToArray();
+            int[] heldOutIndex = heldOutRows.ToArray();
+
+            models[fold] = GradientBoostedTrees.Train(
+                Gather(x, trainIndex), Gather(y, trainIndex), gbtParams,
+                weights is null ? null : Gather(weights, trainIndex));
+
+            var heldOutObserved = new double[heldOutIndex.Length];
+            var heldOutPredicted = new double[heldOutIndex.Length];
+            for (int i = 0; i < heldOutIndex.Length; i++)
+            {
+                int r = heldOutIndex[i];
+                heldOutObserved[i] = y[r];
+                heldOutPredicted[i] = models[fold].ScoreSingle(x[r]);
+                outOfFold[r] = heldOutPredicted[i];
+            }
+
+            perFold[fold] = PeptideFolds.Measure(heldOutObserved, heldOutPredicted);
+            log?.Invoke(
+                $"  fold {fold + 1}/{options.CvFolds}: trained on {trainIndex.Length:N0}, " +
+                $"scored {heldOutIndex.Length:N0}, MAD {perFold[fold].Mad:F4} Th " +
+                $"({perFold[fold].MadReduction:F1}% reduction), r {perFold[fold].PearsonR:F4}");
+        }
+
+        var ensemble = new MzCalibrator(features, models, absoluteTimeOffset, options, null, null);
+
+        var inSample = new double[x.Length];
+        for (int i = 0; i < x.Length; i++) inSample[i] = ensemble.PredictDelta(x[i]);
+
+        var report = new CrossValidationReport
+        {
+            Folds = options.CvFolds,
+            Groups = groupCount,
+            PerFold = perFold,
+            OutOfFold = PeptideFolds.Measure(y, outOfFold),
+            InSample = PeptideFolds.Measure(y, inSample),
+        };
+
+        log?.Invoke(
+            $"  out-of-fold: MAD {report.OutOfFold.Mad:F4} Th " +
+            $"({report.OutOfFold.MadReduction:F1}% reduction), r {report.OutOfFold.PearsonR:F4}, " +
+            $"fold-to-fold MAD spread {report.MadSpread:F4} Th");
+        log?.Invoke(
+            $"  in-sample MAD {report.InSample.Mad:F4} Th, optimism {report.OptimismMad:F4} Th");
+
+        TrainingStatistics statistics =
+            ensemble.EvaluateCrossValidated(x, y, outOfFold, matchedRows, report, options);
+
+        if (options.CvModel == CvModel.Ensemble)
+            return new MzCalibrator(features, models, absoluteTimeOffset, options, statistics, report);
+
+        // Refit on everything. The statistics stay the cross-validated ones: they describe
+        // the procedure, and this model has seen strictly more data than any fold model, so
+        // quoting the fold models' accuracy for it is the conservative reading.
+        log?.Invoke($"  refitting one model on all {x.Length:N0} rows for correction");
+        var refit = new[] { GradientBoostedTrees.Train(x, y, gbtParams, weights) };
+        return new MzCalibrator(features, refit, absoluteTimeOffset, options, statistics, report);
     }
 
     /// <summary>
@@ -406,6 +602,53 @@ public sealed class MzCalibrator
         return (train, validation);
     }
 
+    /// <summary>
+    /// Training statistics for the cross-validated path, where "after" is the out-of-fold
+    /// prediction: every row scored by a model that never saw its peptide.
+    /// </summary>
+    /// <remarks>
+    /// The single-fit path splits rows into trained-on and held-out and reports both. Here
+    /// every row is held out from exactly one fold, so there is no such division: the
+    /// validation figures describe the out-of-fold predictions, the train figures describe
+    /// the ensemble on the rows it was built from, and the difference between them is the
+    /// optimism the cross-validation exists to expose.
+    /// </remarks>
+    private TrainingStatistics EvaluateCrossValidated(
+        double[][] x, double[] y, double[] outOfFold, int rowsMatched,
+        CrossValidationReport report, CalibrationOptions options)
+    {
+        var residual = new double[y.Length];
+        double absolute = 0, squares = 0;
+        for (int i = 0; i < y.Length; i++)
+        {
+            residual[i] = y[i] - outOfFold[i];
+            absolute += Math.Abs(residual[i]);
+            squares += residual[i] * residual[i];
+        }
+
+        double mae = y.Length > 0 ? absolute / y.Length : double.NaN;
+        double rmse = y.Length > 0 ? Math.Sqrt(squares / y.Length) : double.NaN;
+
+        double inSampleAbsolute = 0;
+        for (int i = 0; i < y.Length; i++) inSampleAbsolute += Math.Abs(y[i] - PredictDelta(x[i]));
+
+        return new TrainingStatistics
+        {
+            RowsMatched = rowsMatched,
+            RowsUsed = y.Length,
+            RowsTrain = y.Length,
+            RowsValidation = y.Length,
+            TrainMae = y.Length > 0 ? inSampleAbsolute / y.Length : double.NaN,
+            TrainRmse = report.InSample.Rms,
+            ValidationMae = mae,
+            ValidationRmse = rmse,
+            Before = MarsStatistics.Summarize(y),
+            After = MarsStatistics.Summarize(residual),
+            PermutationImportance = ComputePermutationImportance(x, y, options),
+            SplitCount = ComputeSplitCounts(),
+        };
+    }
+
     private TrainingStatistics Evaluate(
         double[][] x,
         double[] y,
@@ -418,18 +661,18 @@ public sealed class MzCalibrator
         for (int i = 0; i < trainIndex.Length; i++)
         {
             int r = trainIndex[i];
-            residualsTrain[i] = y[r] - Model.ScoreSingle(x[r]);
+            residualsTrain[i] = y[r] - PredictDelta(x[r]);
         }
 
         var residualsValidation = new double[validationIndex.Length];
         for (int i = 0; i < validationIndex.Length; i++)
         {
             int r = validationIndex[i];
-            residualsValidation[i] = y[r] - Model.ScoreSingle(x[r]);
+            residualsValidation[i] = y[r] - PredictDelta(x[r]);
         }
 
         var after = new double[x.Length];
-        for (int i = 0; i < x.Length; i++) after[i] = y[i] - Model.ScoreSingle(x[i]);
+        for (int i = 0; i < x.Length; i++) after[i] = y[i] - PredictDelta(x[i]);
 
         return new TrainingStatistics
         {
@@ -510,7 +753,7 @@ public sealed class MzCalibrator
         double sum = 0;
         for (int i = 0; i < x.Length; i++)
         {
-            double residual = y[i] - Model.ScoreSingle(x[i]);
+            double residual = y[i] - PredictDelta(x[i]);
             sum += residual * residual;
         }
 
@@ -520,8 +763,10 @@ public sealed class MzCalibrator
     private int[] ComputeSplitCounts()
     {
         var counts = new int[Features.Count];
-        GbtModelData data = Model.ToModelData();
-        foreach (int feature in data.Feature)
+        // Summed over the ensemble: with one model this is unchanged, and with folds it is
+        // the total number of times the feature was split on anywhere in the ensemble.
+        foreach (GradientBoostedTrees model in Models)
+        foreach (int feature in model.ToModelData().Feature)
         {
             if (feature >= 0 && feature < counts.Length) counts[feature]++;
         }
