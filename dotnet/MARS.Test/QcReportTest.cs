@@ -172,6 +172,52 @@ public sealed class QcHtmlReportTest
     }
 
     [Fact]
+    public void WithoutAModelReportsTheMeasuredErrorAndClaimsNothingMore()
+    {
+        var data = BuildData();
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".html");
+        try
+        {
+            // The `mars qc` shape: matches and features, but no corrected error, no
+            // importance, and no training statistics.
+            var preCalibration = new QcHtmlReport.Data
+            {
+                ErrorBefore = data.ErrorBefore,
+                ErrorAfter = Array.Empty<double>(),
+                RetentionTime = data.RetentionTime,
+                FragmentMz = data.FragmentMz,
+                Features = data.Features,
+                ImportanceNames = Array.Empty<string>(),
+                Importance = Array.Empty<double>(),
+            };
+
+            QcHtmlReport.Write(
+                path, preCalibration, statistics: null,
+                new MARS.Core.MatchStatistics { SpectraSeen = 10, FragmentsMatched = 400 },
+                new[] { "run.mzML" }, "0.3 Th", "26.1.0",
+                MARS.Core.MarsStatistics.Summarize(data.ErrorBefore));
+
+            string html = File.ReadAllText(path);
+
+            Assert.Contains("Pre-calibration", html, StringComparison.Ordinal);
+            Assert.Contains("median absolute error", html, StringComparison.Ordinal);
+
+            // Nothing may imply a correction that was never computed. An "after" panel or an
+            // importance chart here would be reporting a model that does not exist.
+            Assert.DoesNotContain("After correction", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Feature importance", html, StringComparison.Ordinal);
+            Assert.Contains("As measured", html, StringComparison.Ordinal);
+
+            // Histogram, one heatmap, one panel per feature - and no second heatmap.
+            Assert.Equal(preCalibration.Features.Count + 2, Regex.Matches(html, "<svg ").Count);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void HandlesAnEmptyMatchSetWithoutThrowing()
     {
         var empty = new QcHtmlReport.Data

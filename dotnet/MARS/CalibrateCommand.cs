@@ -105,7 +105,7 @@ public static class CalibrateCommand
             }
         }
 
-        bool injectionTimeAvailable = ProbeInjectionTime(mzmlFiles[0], infoByFile[mzmlFiles[0]]);
+        bool injectionTimeAvailable = ProbeInjectionTime(infoByFile[mzmlFiles[0]]);
         if (!injectionTimeAvailable)
             Log.Warn("No ion injection time in the first MS2 spectrum; the injection-time feature group is off.");
 
@@ -289,7 +289,11 @@ public static class CalibrateCommand
     /// Checks whether the run reports an ion injection time, by looking at its first MS2
     /// spectrum. Fourteen of the twenty-two features are undefined without one.
     /// </summary>
-    private static bool ProbeInjectionTime(string path, MzMLFileInfo info)
+    /// <summary>
+    /// Whether the first MS2 spectrum carries an ion injection time. If it does not, the
+    /// whole injection-time feature group is dropped rather than filled with zeros.
+    /// </summary>
+    internal static bool ProbeInjectionTime(MzMLFileInfo info)
     {
         foreach (SpectrumRecord spectrum in MzMLFile.ReadSpectra(info, msLevel: 2))
             return spectrum.InjectionTime.HasValue;

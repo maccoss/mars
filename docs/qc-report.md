@@ -1,9 +1,14 @@
 # Reading the QC report
 
-`mars calibrate` writes two reports next to its output:
+Both `mars qc` and `mars calibrate` write two reports:
 
 - **`mars_qc_summary.txt`** - the numbers, for a pipeline or a quick look.
 - **`mars_qc_report.html`** - the same numbers plus the figures, as one self-contained file.
+
+`qc` runs before any model exists, so its report shows the error **as measured** and how it
+varies with each feature. `calibrate` shows the same figures with an after-correction
+overlay, plus an after-heatmap and feature importance. Everything below applies to both;
+where they differ it says so.
 
 The HTML file has no scripts, no external references, and fetches nothing when opened.
 Everything is embedded, so it can be attached to an email and read by someone who has
@@ -13,10 +18,21 @@ neither the data nor the tool. A 22-feature report is around 210 KB.
 
 ## The verdict line
 
-At the top, before any figure:
+At the top, before any figure. After `calibrate`:
 
 > **46.2% reduction** in median absolute error, 0.0802 → 0.0432 Th. The correction removed
 > a substantial part of the mass error.
+
+After `qc`, where there is no model to report on:
+
+> **0.0802 Th** median absolute error across 146,515 matched fragments, with a median of
+> -0.0042 Th. The median is close to zero, so there is no large constant offset. Whether the
+> spread is systematic enough to remove is what fitting a model would show.
+
+The `qc` line deliberately stops short of predicting how much is removable, because nothing
+short of fitting a model answers that. What it can say is how much of the error is a plain
+constant offset - a median far from zero - which is the most straightforwardly correctable
+thing there is.
 
 Median absolute deviation rather than standard deviation, because a handful of badly
 matched peaks move a standard deviation and should not be allowed to decide whether the run
@@ -29,7 +45,8 @@ removed, the correct response is usually to keep the original files.
 
 ## Mass error distribution
 
-The uncorrected error against what is left after correction, overlaid.
+The uncorrected error against what is left after correction, overlaid. After `qc` there is
+only the one distribution: the error as measured.
 
 This is the headline figure and it is close to sufficient on its own. If the two
 distributions are not visibly different, nothing further in the report matters.
@@ -48,9 +65,13 @@ cannot squash the informative part into a sliver.
 
 ## Error across retention time and fragment m/z
 
-Two panels, before and after. Colour is the **median** error in each cell - median, not
-mean, because a few mismatched peaks in a sparse cell would otherwise invent structure that
-is not there.
+Two panels after `calibrate`, before and after; one after `qc`. Colour is the **median**
+error in each cell - median, not mean, because a few mismatched peaks in a sparse cell
+would otherwise invent structure that is not there.
+
+This is the most useful figure in a `qc` report. Visible structure means the error is
+systematic, and systematic error is the kind MARS can remove; a featureless panel means it
+is mostly noise, and calibrating will not achieve much.
 
 This is the figure that tells you the error is *systematic* rather than random, and
 therefore correctable at all:
@@ -68,6 +89,8 @@ Empty cells are simply where no fragment matched.
 
 ## Feature importance
 
+*`calibrate` only - there is no model to interrogate after `qc`.*
+
 Permutation importance: how much the validation error degrades when one feature's values
 are shuffled, normalized to sum to 1.
 
@@ -81,8 +104,9 @@ logs are worth using when you have them and not worth chasing when you do not.
 
 ## Error against each feature
 
-One panel per active feature. The background is a binned density of the uncorrected error;
-the two lines are the **median error per column**, before and after correction.
+One panel per active feature. The background is a binned density of the measured error;
+the lines are the **median error per column** - two after `calibrate`, before and after
+correction, and one after `qc`.
 
 Read the lines, not the cloud. The cloud is dominated by how many fragments happen to fall
 in each region; the median line is the trend the model has to capture.
@@ -94,12 +118,16 @@ in each region; the median line is the trend the model has to capture.
 - **A flat before-line** means that feature carries no information about the error here, and
   should be near zero in the importance chart.
 
+After `qc` there is only the one line, and it is read as a forecast: a sloped line is a
+dependence a model could exploit, and a panel full of flat lines is a warning that there
+may be little for one to learn.
+
 A column with fewer than 20 rows is skipped rather than plotted, because a median over a
 handful of points reads as signal when it is noise.
 
-The panels cover every feature the model was given, so the set changes with the data: no
+The panels cover every feature that was available, so the set changes with the data: no
 injection time in the file means no injection-time panels, and temperature panels appear
-only when the logs were supplied.
+only when `--temperature-dir` was supplied.
 
 ## How the figures are made
 
@@ -126,3 +154,5 @@ on either.
 - **Whether the file is well-formed.** That is `mars verify`.
 - **Whether the correction generalizes.** The validation MAE in the summary is the only
   guard, and it is computed on rows from the same cohort.
+- **How much of the error is removable**, in a `qc` report. Only fitting a model answers
+  that, which is what `calibrate` does.

@@ -41,6 +41,12 @@ public static class QcHtmlReport
         public required IReadOnlyList<double> Importance { get; init; }
     }
 
+    /// <param name="statistics">Training statistics, or null when no model was fitted.</param>
+    /// <param name="uncorrected">
+    /// Summary of the uncorrected error. Used when <paramref name="statistics"/> is null,
+    /// which is the `mars qc` case: there is no before-and-after to show, but the error
+    /// that is there is the whole point of the report.
+    /// </param>
     public static void Write(
         string path,
         Data data,
@@ -48,7 +54,8 @@ public static class QcHtmlReport
         MatchStatistics matchStatistics,
         IReadOnlyList<string> inputFiles,
         string toleranceDescription,
-        string version)
+        string version,
+        ErrorSummary? uncorrected = null)
     {
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
@@ -60,24 +67,39 @@ public static class QcHtmlReport
         html.Append("<style>").Append(Style).Append("</style></head><body><main>");
 
         html.Append("<h1>MARS QC report</h1>");
+        if (statistics is null)
+            html.Append("<p class=\"sub\">Pre-calibration. No model was fitted.</p>");
         html.Append("<p class=\"sub\">MARS ").Append(Svg.Escape(version)).Append(" &middot; ")
             .Append(inputFiles.Count.ToString("N0", CultureInfo.InvariantCulture))
             .Append(inputFiles.Count == 1 ? " input file" : " input files").Append("</p>");
 
-        AppendVerdict(html, statistics);
-        AppendSummaryTables(html, statistics, matchStatistics, inputFiles, toleranceDescription);
+        AppendVerdict(html, statistics, uncorrected);
+        AppendSummaryTables(html, statistics, uncorrected, matchStatistics, inputFiles, toleranceDescription);
+
+        bool corrected = data.ErrorAfter.Length == data.ErrorBefore.Length;
 
         Figure(html, "Mass error distribution",
-            "The uncorrected error against what is left after the model's correction. If these "
-            + "two distributions are not visibly different, the model found nothing to remove.",
+            corrected
+                ? "The uncorrected error against what is left after the model's correction. If "
+                  + "these two distributions are not visibly different, the model found nothing "
+                  + "to remove."
+                : "The mass error as measured, before any correction. Its width is what a model "
+                  + "would have to work with; how much of it is removable is what calibrating "
+                  + "would show.",
             Charts.ErrorHistogram(data.ErrorBefore, data.ErrorAfter, "Th"));
 
         Figure(html, "Error across retention time and fragment m/z",
-            "Median error per cell. Structure here is the systematic component MARS exists to "
-            + "remove; a uniformly blank panel after correction is the goal.",
-            Charts.ErrorHeatmap(data.RetentionTime, data.FragmentMz, data.ErrorBefore, "Th", "Before correction"));
+            corrected
+                ? "Median error per cell. Structure here is the systematic component MARS exists "
+                  + "to remove; a uniformly blank panel after correction is the goal."
+                : "Median error per cell. Visible structure - bands, gradients, blocks - is "
+                  + "systematic error, and systematic error is the kind MARS can remove. A "
+                  + "featureless panel means the error is mostly noise.",
+            Charts.ErrorHeatmap(
+                data.RetentionTime, data.FragmentMz, data.ErrorBefore, "Th",
+                corrected ? "Before correction" : "As measured"));
 
-        if (data.ErrorAfter.Length == data.ErrorBefore.Length)
+        if (corrected)
         {
             Figure(html, null, null,
                 Charts.ErrorHeatmap(data.RetentionTime, data.FragmentMz, data.ErrorAfter, "Th", "After correction"));
@@ -91,11 +113,19 @@ public static class QcHtmlReport
                 Charts.FeatureImportance(data.ImportanceNames, data.Importance));
         }
 
-        html.Append("<h2>Error against each feature</h2>");
-        html.Append("<p class=\"note\">Binned density of the uncorrected error, with the median "
-                  + "error per column drawn over it before and after correction. The trend line is "
-                  + "the part to read: it is what the model has to capture, and how much of it is "
-                  + "left afterwards.</p>");
+        if (data.Features.Count > 0)
+        {
+            html.Append("<h2>Error against each feature</h2>");
+            html.Append("<p class=\"note\">Binned density of the measured error, with the median "
+                      + "error per column drawn over it"
+                      + (corrected ? " before and after correction" : string.Empty)
+                      + ". The trend line is the part to read: a sloped line is a real dependence"
+                      + (corrected
+                          ? ", and a flat line after correction means the model captured it."
+                          : " that a model could exploit; a flat line means this feature says "
+                            + "nothing about the error here.")
+                      + "</p>");
+        }
 
         foreach ((string name, double[] values) in data.Features)
         {
@@ -107,9 +137,14 @@ public static class QcHtmlReport
         File.WriteAllText(path, html.ToString(), new UTF8Encoding(false));
     }
 
-    private static void AppendVerdict(StringBuilder html, TrainingStatistics? statistics)
+    private static void AppendVerdict(
+        StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected)
     {
-        if (statistics is null) return;
+        if (statistics is null)
+        {
+            AppendPreCalibrationVerdict(html, uncorrected);
+            return;
+        }
 
         double before = statistics.Before.Mad;
         double after = statistics.After.Mad;
@@ -136,9 +171,38 @@ public static class QcHtmlReport
             .Append(verdict).Append("</div>");
     }
 
+    /// <summary>
+    /// What `mars qc` can honestly say: how big the error is, and how much of it is a plain
+    /// offset. It cannot say how much is removable - only fitting a model answers that - so
+    /// it does not pretend to.
+    /// </summary>
+    private static void AppendPreCalibrationVerdict(StringBuilder html, ErrorSummary? uncorrected)
+    {
+        if (uncorrected is not ErrorSummary summary || summary.Count == 0) return;
+
+        html.Append("<div class=\"verdict\"><strong>")
+            .Append(Format(summary.Mad)).Append(" Th</strong> median absolute error across ")
+            .Append(summary.Count.ToString("N0", CultureInfo.InvariantCulture))
+            .Append(" matched fragments, with a median of ")
+            .Append(Format(summary.Median)).Append(" Th. ");
+
+        // A median well away from zero is a straight offset across the whole run, which is
+        // the most obviously correctable thing there is.
+        double bias = Math.Abs(summary.Median);
+        html.Append(bias > summary.Mad * 0.5
+            ? "The median is a long way from zero, so a systematic offset runs through the "
+              + "whole cohort. That part is straightforwardly correctable."
+            : "The median is close to zero, so there is no large constant offset. Whether the "
+              + "spread is systematic enough to remove is what fitting a model would show.");
+
+        html.Append(" Run <code>mars calibrate</code> to find out how much of this is "
+                  + "removable.</div>");
+    }
+
     private static void AppendSummaryTables(
-        StringBuilder html, TrainingStatistics? statistics, MatchStatistics matchStatistics,
-        IReadOnlyList<string> inputFiles, string toleranceDescription)
+        StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected,
+        MatchStatistics matchStatistics, IReadOnlyList<string> inputFiles,
+        string toleranceDescription)
     {
         html.Append("<div class=\"grid\">");
 
@@ -164,6 +228,15 @@ public static class QcHtmlReport
             Row3(html, "Median absolute deviation", statistics.Before.Mad, statistics.After.Mad);
             Row3(html, "Standard deviation", statistics.Before.StdDev, statistics.After.StdDev);
             Row3(html, "Median", statistics.Before.Median, statistics.After.Median);
+            html.Append("</table></section>");
+        }
+        else if (uncorrected is ErrorSummary summary)
+        {
+            html.Append("<section><h2>Mass error</h2><table>");
+            Row(html, "Median absolute deviation", Format(summary.Mad) + " Th");
+            Row(html, "Standard deviation", Format(summary.StdDev) + " Th");
+            Row(html, "Median", Format(summary.Median) + " Th");
+            Row(html, "Mean absolute error", Format(summary.Mae) + " Th");
             html.Append("</table></section>");
         }
 

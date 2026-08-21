@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using MARS.Core;
 using MARS.IO;
+using MARS.Report;
 
 namespace MARS.Cli;
 
@@ -35,7 +36,12 @@ public static class QcCommand
                       --min-intensity <n>    Minimum peak intensity (default 500)
                       --max-isolation-window <Th>
                                              Skip wider isolation windows
+                      --temperature-dir <d>  Directory of RFA2-/RFC2- temperature CSVs
                       --output <path>        Report path (default mars_qc_summary.txt)
+                      --html-report <path>   Where to write the figures (default
+                                             mars_qc_report.html beside the summary).
+                                             One self-contained file, safe to email
+                      --no-html-report       Skip the figures and write only the summary
                       --by-file              Report each input file separately
                   -v, --verbose              Verbose output
                 """);
@@ -63,6 +69,9 @@ public static class QcCommand
 
         string reportPath = args.String("output") ?? "mars_qc_summary.txt";
         bool byFile = args.Flag("by-file");
+        bool noHtmlReport = args.Flag("no-html-report");
+        string htmlReportPath = args.String("html-report") ?? DefaultHtmlPath(reportPath);
+        string? temperatureDirectory = args.String("temperature-dir");
 
         var runNames = new List<string>();
         foreach (string file in mzmlFiles) runNames.Add(Path.GetFileName(file));
@@ -79,19 +88,48 @@ public static class QcCommand
         text.AppendLine($"Minimum intensity: {matchOptions.MinIntensity:N0}");
         text.AppendLine();
 
-        // Only the four always-on features are needed to report accuracy.
-        MarsFeature[] collect = { MarsFeature.FragmentMz, MarsFeature.PrecursorMz };
-        var combined = new MatchTable(collect);
+        // Reporting accuracy needs only two features. The figures want every feature there
+        // is, since a panel per feature is most of their value, and computing them costs one
+        // pass over peaks MARS has already decoded. Collect the wider set only when the
+        // figures are actually going to be drawn.
+        var infoByFile = new Dictionary<string, MzMLFileInfo>(StringComparer.OrdinalIgnoreCase);
+        var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
+        bool anyRfa2 = false, anyRfc2 = false;
+
+        foreach (string file in mzmlFiles)
+        {
+            infoByFile[file] = MzMLFile.Inspect(file);
+            if (temperatureDirectory is null) continue;
+
+            TemperatureSet temperatures = TemperatureCsvReader.Find(file, temperatureDirectory, Log.Info);
+            temperatureByFile[file] = temperatures;
+            anyRfa2 |= temperatures.Rfa2 is not null;
+            anyRfc2 |= temperatures.Rfc2 is not null;
+        }
+
+        MarsFeature[] collect;
+        if (noHtmlReport)
+        {
+            collect = new[] { MarsFeature.FragmentMz, MarsFeature.PrecursorMz };
+        }
+        else
+        {
+            bool injectionTimeAvailable = CalibrateCommand.ProbeInjectionTime(infoByFile[mzmlFiles[0]]);
+            collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
+        }
+
+        var combined = new MatchTable(collect, keepDetail: !noHtmlReport);
         var matcher = new FragmentMatcher(library, matchOptions);
 
         foreach (string file in mzmlFiles)
         {
-            MzMLFileInfo info = MzMLFile.Inspect(file);
+            MzMLFileInfo info = infoByFile[file];
             int rowsBefore = combined.Count;
+            temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
 
             Log.Info($"Matching: {Path.GetFileName(file)}");
             foreach (SpectrumRecord spectrum in MzMLFile.ReadSpectra(info, msLevel: 2))
-                matcher.MatchSpectrum(spectrum, null, combined);
+                matcher.MatchSpectrum(spectrum, temperatures, combined);
 
             Log.Info($"  {combined.Count - rowsBefore:N0} fragment matches");
 
@@ -119,8 +157,60 @@ public static class QcCommand
         File.WriteAllText(reportPath, text.ToString());
 
         Console.Out.Write(text.ToString());
+
+        if (!noHtmlReport)
+        {
+            QcHtmlReport.Write(
+                htmlReportPath,
+                BuildReportData(combined, collect),
+                statistics: null,
+                matcher.Statistics,
+                mzmlFiles,
+                matchOptions.TolerancePpm > 0
+                    ? $"{matchOptions.TolerancePpm:0.##} ppm"
+                    : $"{matchOptions.MzToleranceTh:0.###} Th",
+                MarsInfo.Version,
+                MarsStatistics.Summarize(combined.DeltaMz.Items.AsSpan(0, combined.Count)));
+            Log.Info($"Wrote QC figures to {htmlReportPath}");
+        }
+
         Log.Info($"Wrote {reportPath} in {stopwatch.Elapsed.TotalSeconds:F1} s");
         return Program.ExitSuccess;
+    }
+
+    /// <summary>Puts the figures next to the text report rather than the working directory.</summary>
+    private static string DefaultHtmlPath(string reportPath)
+    {
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(reportPath));
+        return string.IsNullOrEmpty(directory)
+            ? "mars_qc_report.html"
+            : Path.Combine(directory, "mars_qc_report.html");
+    }
+
+    /// <summary>
+    /// Collects the per-row values the figures are drawn from. There is no model here, so
+    /// there is no corrected error and no importance; the report renders the measured error
+    /// alone rather than pretending to a before-and-after.
+    /// </summary>
+    private static QcHtmlReport.Data BuildReportData(MatchTable table, MarsFeature[] collected)
+    {
+        int rows = table.Count;
+        var features = new List<(string Name, double[] Values)>(collected.Length);
+        foreach (MarsFeature feature in collected)
+            features.Add((MarsFeatures.NameOf(feature), table.Column(feature).Items[..rows]));
+
+        return new QcHtmlReport.Data
+        {
+            ErrorBefore = table.DeltaMz.Items[..rows],
+            ErrorAfter = Array.Empty<double>(),
+            RetentionTime = table.RetentionTime is null ? Array.Empty<double>() : table.RetentionTime.Items[..rows],
+            FragmentMz = table.Has(MarsFeature.FragmentMz)
+                ? table.Column(MarsFeature.FragmentMz).Items[..rows]
+                : Array.Empty<double>(),
+            Features = features,
+            ImportanceNames = Array.Empty<string>(),
+            Importance = Array.Empty<double>(),
+        };
     }
 
     private static void AppendSummary(StringBuilder text, MatchTable table, int start, int count)

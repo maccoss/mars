@@ -57,15 +57,27 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 | `--prism-csv <path>` | Skyline PRISM report |
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
+| `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
 | `--tolerance <Th>` | Fragment tolerance in Th (default 0.3) |
 | `--tolerance-ppm <ppm>` | Fragment tolerance in ppm; overrides `--tolerance` |
 | `--min-intensity <n>` | Minimum peak intensity to match (default 500) |
 | `--max-isolation-window <Th>` | Skip spectra with wider isolation windows |
-| `--output <path>` | Report path (default `mars_qc_summary.txt`) |
+| `--output <path>` | Text report path (default `mars_qc_summary.txt`) |
+| `--html-report <path>` | Figures (default `mars_qc_report.html`, beside the text report) |
+| `--no-html-report` | Skip the figures |
 | `--by-file` | Report each input file separately rather than pooled |
 
-The report gives the error in both Th and ppm, which is the quickest way to tell whether
-your tolerance is sane before training anything. See
+`qc` writes the same figures as `calibrate`, minus the ones that need a model: no corrected
+distribution, no after-heatmap, no feature importance. What is left is the error as
+measured and how it varies with each feature, which is exactly what the decision to
+calibrate turns on. See [qc-report.md](qc-report.md).
+
+With `--no-html-report` only two features are collected, which is all the numbers need.
+With figures on, every feature is collected so the panels mean something; the cost is one
+pass over peaks MARS has already decoded.
+
+The text report gives the error in both Th and ppm, which is the quickest way to tell
+whether your tolerance is sane before training anything. See
 [choosing a tolerance](spectral-libraries.md#choosing-a-tolerance).
 
 ---
