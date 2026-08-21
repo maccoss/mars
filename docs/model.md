@@ -168,7 +168,14 @@ It is achieved by construction:
   rather than of the shuffle.
 
 CI enforces this as its own job, separate from the rest of the test suite, so a failure is
-unmistakable.
+unmistakable, and a unit test saves two independently fitted models and compares the files
+byte for byte.
+
+Verified end to end on real data: the same `mars calibrate` invocation run twice on a
+1.2 GB Stellar file, plus a third run at `--threads 1`, produce a byte-identical
+`mars_model.json` (4,194,948 bytes), a byte-identical `mars_qc_summary.txt`, and a
+byte-identical 1,510,067,312-byte corrected mzML. The per-fold cross-validation figures
+match to every printed digit across thread counts.
 
 The one thing that is *not* bit-identical is the compressed bytes of the output file:
 different platforms ship different zlib builds. Decoded values are identical. Use
@@ -198,9 +205,38 @@ seed is involved, so the split is reproducible from the input alone, and every f
 equal number of peptides. This follows Osprey's Percolator implementation, which splits its
 folds the same way (`PercolatorSampling.CreateStratifiedFoldsByPeptide`).
 
-### What gets applied
+### What gets applied: ensemble or refit
 
-The default is the **ensemble**: a prediction is the mean of the five fold models. That is
+Cross-validation produces five models. Something has to be written to `mars_model.json` and
+used to correct the data, and there are two reasonable answers.
+
+**Ensemble** (`--cv-model ensemble`, the default) keeps all five. A prediction is the mean
+of what the five models say:
+
+```
+predict(x) = (model_1(x) + model_2(x) + model_3(x) + model_4(x) + model_5(x)) / 5
+```
+
+Each model saw four fifths of the peptides, so none of them saw everything - but averaging
+independently-trained models is steadier than trusting any one of them, and it costs no
+extra training. Most importantly, **the model that ships is exactly the model that was
+measured**: the accuracy in the report is the accuracy of this object.
+
+**Refit** (`--cv-model refit`) throws the five away after measuring them and trains one
+final model on every row:
+
+```
+predict(x) = model_all(x)
+```
+
+That model has seen more data than any fold model did, so it is probably slightly better -
+but it was never itself held out against anything, so the reported accuracy describes the
+*procedure* that produced it rather than the object. This is the ordinary way
+cross-validation is read in statistics, and it is what most ML pipelines do.
+
+Both report identical numbers, because both are measured by the same five folds.
+
+The default is the ensemble. That is
 what Osprey's Percolator does on its tree path - the linear path can average fold weight
 vectors, because a dot product is linear in the weights, but trees cannot be averaged that
 way, so it averages the fold *scores* instead. The model that ships is then exactly the

@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
 using System.Linq;
 using MARS.Core;
 using Xunit;
@@ -285,6 +287,40 @@ public sealed class CrossValidatedFitTest
 
         double mean = calibrator.Models.Sum(m => m.ScoreSingle(row)) / calibrator.Models.Count;
         Assert.Equal(mean, calibrator.PredictDelta(row), 12);
+    }
+
+    [Fact]
+    public void TwoIdenticalFitsProduceAByteIdenticalModelFile()
+    {
+        string Fit(int threads)
+        {
+            MzCalibrator calibrator = MzCalibrator.Fit(
+                BuildMatches(),
+                new CalibrationOptions { CvFolds = 5, MaxDegreeOfParallelism = threads, ImportanceSampleRows = 0 },
+                absoluteTimeOffset: 0);
+
+            string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".json");
+            try
+            {
+                MarsModelIo.Save(calibrator, path);
+
+                // The version string is stamped from the assembly and the file is otherwise
+                // fully determined by the input, so hashing the whole thing is a fair test.
+                using var sha = SHA256.Create();
+                return Convert.ToHexString(sha.ComputeHash(File.ReadAllBytes(path)));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        // Same input, same bytes - including across thread counts. MARS writes m/z values
+        // into files that get reprocessed and compared downstream, so a model that varied
+        // run to run would make every such comparison unreliable.
+        string first = Fit(1);
+        Assert.Equal(first, Fit(1));
+        Assert.Equal(first, Fit(8));
     }
 
     [Fact]

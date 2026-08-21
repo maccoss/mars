@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using MARS.Core;
 using MARS.Report;
 using Xunit;
 
@@ -164,6 +165,63 @@ public sealed class QcHtmlReportTest
             int expected = data.Features.Count + 4;
             Assert.Equal(expected, Regex.Matches(html, "<svg ").Count);
             Assert.Contains("log_intensity", html, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ShowsHowMuchTheFoldsDisagree()
+    {
+        var data = BuildData();
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".html");
+        try
+        {
+            FoldMetrics Fold(double mad, double r) => new()
+            {
+                Rows = 100, Mad = mad, Rms = mad * 2, StdDev = mad * 2,
+                Median = 0, PearsonR = r, MadBefore = 0.08,
+            };
+
+            var withCv = new QcHtmlReport.Data
+            {
+                ErrorBefore = data.ErrorBefore,
+                ErrorAfter = data.ErrorAfter,
+                RetentionTime = data.RetentionTime,
+                FragmentMz = data.FragmentMz,
+                Features = data.Features,
+                ImportanceNames = data.ImportanceNames,
+                Importance = data.Importance,
+                CrossValidation = new CrossValidationReport
+                {
+                    Folds = 3,
+                    Groups = 60,
+                    PerFold = new[] { Fold(0.044, 0.69), Fold(0.045, 0.68), Fold(0.046, 0.70) },
+                    OutOfFold = Fold(0.045, 0.69),
+                    InSample = Fold(0.043, 0.71),
+                },
+            };
+
+            QcHtmlReport.Write(
+                path, withCv, statistics: null,
+                new MARS.Core.MatchStatistics { SpectraSeen = 10, FragmentsMatched = 400 },
+                new[] { "run.mzML" }, "0.3 Th", "26.1.0");
+
+            string html = File.ReadAllText(path);
+
+            // The per-fold table, and the spread row that says whether one held-out number
+            // was luck. A report that showed only the pooled figure would be hiding the
+            // variance the folds exist to measure.
+            Assert.Contains("Cross-validation", html, StringComparison.Ordinal);
+            Assert.Contains("+/-", html, StringComparison.Ordinal);
+            Assert.Contains("Median absolute residual per fold", html, StringComparison.Ordinal);
+            Assert.Contains("Pearson correlation per fold", html, StringComparison.Ordinal);
+            Assert.Contains("Optimism", html, StringComparison.Ordinal);
+
+            // Histogram, two heatmaps, importance, two fold-spread figures, one per feature.
+            Assert.Equal(withCv.Features.Count + 6, Regex.Matches(html, "<svg ").Count);
         }
         finally
         {

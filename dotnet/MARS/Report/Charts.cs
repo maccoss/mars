@@ -164,6 +164,83 @@ public static class Charts
     }
 
     /// <summary>Permutation importance per feature, largest first.</summary>
+    /// <summary>
+    /// Each fold's accuracy against the pooled figure, with a band at one standard
+    /// deviation either side of the fold mean.
+    /// </summary>
+    /// <remarks>
+    /// The variance is the point of plotting this at all. A single held-out number says how
+    /// the model did on one split; the picture says whether that number was luck. Folds
+    /// sitting almost on top of each other mean the estimate is stable and the headline
+    /// figure can be quoted as-is. Folds scattered across the band mean the cohort contains
+    /// regions the model handles very differently, and the pooled number is an average over
+    /// them rather than a description of any of them.
+    /// </remarks>
+    public static string FoldSpread(
+        IReadOnlyList<double> perFold, double pooled, double spread, string unit, string metric)
+    {
+        const int height = 200;
+        var svg = new Svg(Width, height);
+        if (perFold.Count == 0) return Empty(svg, "No folds to show.");
+
+        double lowest = pooled, highest = pooled;
+        foreach (double value in perFold)
+        {
+            lowest = Math.Min(lowest, value);
+            highest = Math.Max(highest, value);
+        }
+
+        // Pad by the spread so the band is visible even when the folds are nearly identical,
+        // which is the common and desirable case.
+        double pad = Math.Max(double.IsNaN(spread) ? 0 : spread * 2, (highest - lowest) * 0.6);
+        if (pad <= 0) pad = Math.Abs(pooled) * 0.02;
+        if (pad <= 0) pad = 1;
+
+        var x = new Axis(lowest - pad, highest + pad, Left, Width - Right);
+        double axisY = height - 54;
+        double dotY = axisY - 46;
+
+        if (!double.IsNaN(spread) && spread > 0)
+        {
+            double mean = 0;
+            foreach (double value in perFold) mean += value;
+            mean /= perFold.Count;
+
+            double bandLow = x.Map(mean - spread);
+            double bandHigh = x.Map(mean + spread);
+            svg.Rect(bandLow, dotY - 22, bandHigh - bandLow, 44, After,
+                "fill-opacity=\"0.12\"");
+            svg.Text((bandLow + bandHigh) / 2, dotY - 28, "+/- 1 sd", anchor: "middle",
+                size: 10, fill: Muted);
+        }
+
+        double pooledX = x.Map(pooled);
+        svg.Line(pooledX, dotY - 26, pooledX, dotY + 26, Before, 2);
+        svg.Text(pooledX, dotY + 40, "pooled " + pooled.ToString("0.0000", CultureInfo.InvariantCulture),
+            anchor: "middle", size: 10, fill: Before);
+
+        for (int i = 0; i < perFold.Count; i++)
+        {
+            double px = x.Map(perFold[i]);
+            // Spread the dots vertically so folds with near-identical values stay countable
+            // rather than drawing on top of one another.
+            double py = dotY - 14 + (i * (28.0 / Math.Max(1, perFold.Count - 1)));
+            svg.Rect(px - 3, py - 3, 6, 6, After);
+            svg.Text(px + 7, py + 3.5, (i + 1).ToString(CultureInfo.InvariantCulture), size: 9, fill: Muted);
+        }
+
+        foreach (double tick in x.Ticks(6))
+        {
+            double px = x.Map(tick);
+            svg.Line(px, axisY, px, axisY + 4, Axis0, 1);
+            svg.Text(px, axisY + 16, x.Format(tick), anchor: "middle", size: 10, fill: Muted);
+        }
+
+        svg.Line(Left, axisY, Width - Right, axisY, Axis0, 1);
+        svg.Text(Left, 22, $"{metric} per fold ({unit})", size: 12, bold: true);
+        return svg.ToString();
+    }
+
     public static string FeatureImportance(IReadOnlyList<string> names, IReadOnlyList<double> importance)
     {
         int rows = Math.Min(names.Count, importance.Count);

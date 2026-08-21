@@ -259,6 +259,24 @@ public static class QcHtmlReport
         html.Append("</table><figcaption>Spread is the standard deviation across folds.</figcaption>");
         html.Append("</figure>");
 
+        var foldMad = new double[cv.PerFold.Length];
+        var foldR = new double[cv.PerFold.Length];
+        for (int i = 0; i < cv.PerFold.Length; i++)
+        {
+            foldMad[i] = cv.PerFold[i].Mad;
+            foldR[i] = cv.PerFold[i].PearsonR;
+        }
+
+        Figure(html, null,
+            "Each fold's accuracy against the pooled figure. Folds sitting close together mean "
+            + "the estimate is stable and the pooled number can be read as-is; folds scattered "
+            + "across the band mean the cohort has regions the model handles very differently, "
+            + "and the pooled number is an average over them.",
+            Charts.FoldSpread(foldMad, cv.OutOfFold.Mad, cv.MadSpread, "Th", "Median absolute residual"));
+
+        Figure(html, null, null,
+            Charts.FoldSpread(foldR, cv.OutOfFold.PearsonR, cv.PearsonRSpread, "r", "Pearson correlation"));
+
         html.Append("<div class=\"verdict\"><strong>Optimism ")
             .Append(Format(cv.OptimismMad)).Append(" Th.</strong> The ensemble scores ")
             .Append(Format(cv.InSample.Mad))

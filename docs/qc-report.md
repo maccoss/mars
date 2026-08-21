@@ -94,10 +94,28 @@ Empty cells are simply where no fragment matched.
 Per-fold accuracy, the pooled out-of-fold figure, and the spread across folds. Folds are
 split by peptide, so every row was scored by a model that never saw its peptide.
 
-Read the **spread** row. One held-out number tells you how the model did on one split; five
-tell you whether that number was luck. A tight spread means the estimate is stable; a wide
-one means the cohort has regions the model handles very differently and the headline figure
-is an average over them.
+Read the **spread** row, and the two figures below the table that plot it. One held-out
+number tells you how the model did on one split; five tell you whether that number was
+luck.
+
+Each figure places every fold's value on an axis, marks the pooled figure, and shades one
+standard deviation either side of the fold mean:
+
+- **Folds clustered together** - the estimate is stable, and the pooled number can be quoted
+  as-is. On the reference Stellar run the five folds span 0.0440 to 0.0452 Th, a standard
+  deviation of 0.0004 Th against a corrected error of 0.0446 Th, so which peptides happened
+  to land in which fold barely matters.
+- **Folds scattered across the band** - the cohort contains regions the model handles very
+  differently, and the pooled figure is an average over them rather than a description of
+  any of them. Worth finding out what separates the good folds from the bad before trusting
+  the correction.
+- **One fold well away from the rest** - usually a peptide population that behaves
+  differently: a different charge state, a different elution region, a contaminant set.
+
+Two metrics are plotted: median absolute residual, which is the accuracy, and Pearson r,
+which is how much of the error's structure the model tracks. They can disagree, and it is
+informative when they do - a fold with a good MAD but a poor r is one where there was little
+error to find rather than one the model handled well.
 
 Then read **optimism**: how much better the model looks on rows it was built from than on
 peptides it had not seen. A small gap means the model is generalizing. A large one means it

@@ -78,6 +78,7 @@ public static class QcReport
             text.AppendLine();
             text.AppendLine("  Every row above was scored by a model that never saw its peptide.");
             text.AppendLine("  The before/after figures at the top use these out-of-fold predictions.");
+            text.AppendLine($"  {DescribeSpread(cv)}");
             text.AppendLine();
             text.AppendLine();
         }
@@ -132,6 +133,26 @@ public static class QcReport
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         File.WriteAllText(path, text.ToString());
+    }
+
+    /// <summary>
+    /// Reads the fold-to-fold spread relative to the accuracy being reported. A spread is
+    /// only meaningful against the size of the thing it varies around.
+    /// </summary>
+    private static string DescribeSpread(CrossValidationReport cv)
+    {
+        if (cv.PerFold.Length < 2 || !(cv.OutOfFold.Mad > 0) || double.IsNaN(cv.MadSpread))
+            return "Too few folds to judge how much the estimate varies.";
+
+        double relative = cv.MadSpread / cv.OutOfFold.Mad;
+        return relative switch
+        {
+            < 0.05 => "The folds agree closely, so the pooled figure is a stable estimate.",
+            < 0.15 => "The folds vary a little; the pooled figure is a reasonable estimate.",
+            _ => "The folds disagree substantially, so the pooled figure is an average over "
+                 + "populations the model handles differently rather than a description of any "
+                 + "one of them.",
+        };
     }
 
     /// <summary>

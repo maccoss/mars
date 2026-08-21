@@ -82,6 +82,11 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   model on all rows after cross-validating, which corrects about five times faster: on one
   1.47 GB file, 266 s for the ensemble against 91 s for the refit and 52 s for a single fit.
   All three report the same accuracy; only the last reports it optimistically.
+- **The QC report shows how much the folds disagree.** A per-fold table with a spread
+  row, two figures plotting each fold's accuracy against the pooled figure with a
+  one-standard-deviation band, and a plain-language reading of both the spread and the
+  in-sample/out-of-fold gap. One held-out number says how the model did on one split;
+  five say whether that number was luck.
 
 ## Bug Fixes
 
