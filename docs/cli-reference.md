@@ -79,23 +79,65 @@ window actually does to the numbers.
 
 ---
 
+## Input formats
+
+MARS reads mzML itself. With a pwiz-sharp build it also reads Thermo `.raw` directly, so a
+run can be calibrated straight off the instrument with no conversion step:
+
+```bash
+mars calibrate --mzml run.raw --library report-lib.parquet --diann-report report.parquet     --output-dir corrected/ --output-format mzMLb
+```
+
+`--mzml`, `--mzml-dir` and bare file arguments all accept any readable format; the name is
+historical. A directory picks up every file MARS can read, not only `.mzML`.
+
+Reading a `.raw` gives the same answer as reading the mzML msconvert would have made from it.
+On an Astral run matched against the same DIA-NN library, both paths return 230,781 fragment
+matches with the same median, standard deviation and MAD to every reported digit.
+
+It is not faster to *read* - that run takes 53 s from `.raw` against 15 s from the converted
+mzML, and vendor reading does not thread - so the saving is the conversion that no longer has
+to happen and the intermediate file it no longer leaves behind.
+
+The mass analyzer is detected from the vendor file exactly as it is from an mzML, so an Astral
+`.raw` picks a 10 ppm tolerance and a ppm-scaled QC report on its own.
+
+### Which vendors
+
+Only Thermo today. The others are recognized well enough to say what is missing rather than
+"unrecognized file":
+
+| Extension | Vendor | Status |
+|---|---|---|
+| `.mzML` | - | Always |
+| `.raw` | Thermo | With a pwiz-sharp build |
+| `.wiff`, `.wiff2` | Sciex | Not referenced yet; Windows-only when it is |
+| `.d` | Agilent, Bruker | Not referenced yet |
+| `.lcd` | Shimadzu | Not referenced yet |
+
+---
+
 ## Output formats
 
 `calibrate` and `apply` write mzML by default. `--output-format` selects another.
 
 | `--output-format` | Written by | Notes |
 |---|---|---|
-| `mzML` (default) | MARS | The input, byte for byte, except the m/z arrays that changed |
+| `mzML` (default) | MARS, or pwiz | Spliced when the input is mzML; built when it is a vendor file |
 | `mzXML` | pwiz | Cannot express ion mobility or some isolation-window terms |
 | `mzMLb` | pwiz | mzML in an HDF5 container; roughly half the size |
 | `mgf` | pwiz | MS2 peak lists only - no MS1, no chromatograms, no scan metadata |
 
 Two different writers sit behind this, and which one runs depends only on the format.
 
-**mzML is spliced.** MARS copies the input and replaces only the m/z arrays it corrected, so
-everything else is identical by construction rather than by care. That is the whole of
-[the passthrough contract](mzml-passthrough.md), and it is why mzML is the default and does
-not go through pwiz.
+**mzML is spliced when there is something to splice.** MARS copies the input and replaces
+only the m/z arrays it corrected, so everything else is identical by construction rather than
+by care. That is the whole of [the passthrough contract](mzml-passthrough.md), and it is why
+mzML is the default.
+
+Splicing needs an mzML to copy. Reading a `.raw` and writing mzML has nothing to splice into,
+so that file is built by pwiz like any other format - the guarantee applies to mzML in and
+mzML out, and is not pretended at otherwise.
 
 **Everything else is built.** There is no input of that format to splice into, so the file is
 serialized from scratch by [pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178) - the

@@ -244,7 +244,7 @@ public sealed class CommandLineArgs
                 {
                     foreach (string match in Directory.EnumerateFiles(folder, mask))
                     {
-                        if (match.EndsWith(".mzML", StringComparison.OrdinalIgnoreCase))
+                        if (MARS.Pwiz.SpectrumSources.IsReadable(match))
                             files.Add(Path.GetFullPath(match));
                     }
                 }
@@ -263,8 +263,13 @@ public sealed class CommandLineArgs
         {
             if (!Directory.Exists(directory))
                 throw new DirectoryNotFoundException($"Directory not found: {directory}");
-            foreach (string match in Directory.EnumerateFiles(directory, "*.mzML"))
-                files.Add(Path.GetFullPath(match));
+            // Every format MARS can read, not just mzML - a directory of .raw is as
+            // legitimate an input as a directory of converted files.
+            foreach (string match in Directory.EnumerateFiles(directory))
+            {
+                if (MARS.Pwiz.SpectrumSources.IsReadable(match))
+                    files.Add(Path.GetFullPath(match));
+            }
         }
 
         var sorted = files.ToList();

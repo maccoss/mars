@@ -76,10 +76,12 @@ public sealed class PwizWriteRequest
 /// </summary>
 /// <remarks>
 /// <para>
-/// mzML does not come through here. MARS writes mzML by splicing corrected bytes into a copy
-/// of the input, which keeps every byte it did not change identical by construction; see
-/// docs/mzml-passthrough.md. This exists for the formats that byte-splicing cannot reach,
-/// where the file has to be built rather than edited.
+/// mzML normally does not come through here: when the input is itself an mzML, MARS writes it
+/// by splicing corrected bytes into a copy, which keeps every byte it did not change identical
+/// by construction (docs/mzml-passthrough.md). Splicing needs an input to copy, so mzML
+/// written from a vendor file does come through here - there is nothing to splice into, and
+/// the file has to be built. Deciding between the two is the caller's job; see
+/// <c>CorrectedFileWriter</c>.
 /// </para>
 /// <para>
 /// When MARS is built without a pwiz-sharp checkout, <see cref="Available"/> is false and
@@ -169,19 +171,6 @@ public static partial class PwizOutput
     public static PwizWriteResult Write(PwizWriteRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        // Checked BEFORE availability, because mzML never needs pwiz. Reporting "this build
-        // has no pwiz-sharp" for the one format MARS writes itself would send the reader off
-        // to fix something that is not broken.
-        if (request.Format == MarsOutputFormat.MzML)
-        {
-            // Not a limitation - a deliberate refusal. MARS writes mzML by splicing corrected
-            // bytes into a copy of the input, which keeps everything it did not change
-            // identical by construction. Routing mzML through here would quietly give that up.
-            throw new NotSupportedException(
-                "mzML is written by MARS's own byte-splice writer, not through pwiz. "
-                + "See docs/mzml-passthrough.md.");
-        }
 
         RequireAvailable(request.Format);
 

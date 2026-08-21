@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using MARS.Core;
 using MARS.IO;
+using MARS.Pwiz;
 using MARS.Report;
 
 namespace MARS.Cli;
@@ -70,7 +71,7 @@ public static class QcCommand
             MaxIsolationWindowWidth = args.Double("max-isolation-window"),
         };
 
-        ResolutionMode resolution = ResolutionMode.Resolve(args, mzmlFiles, matchOptions, Log.Info);
+
 
         string reportPath = args.String("output") ?? "mars_qc_summary.txt";
         bool byFile = args.Flag("by-file");
@@ -104,13 +105,13 @@ public static class QcCommand
         // is, since a panel per feature is most of their value, and computing them costs one
         // pass over peaks MARS has already decoded. Collect the wider set only when the
         // figures are actually going to be drawn.
-        var infoByFile = new Dictionary<string, MzMLFileInfo>(StringComparer.OrdinalIgnoreCase);
+        var sourceByFile = new Dictionary<string, ISpectrumSource>(StringComparer.OrdinalIgnoreCase);
         var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
         bool anyRfa2 = false, anyRfc2 = false;
 
         foreach (string file in mzmlFiles)
         {
-            infoByFile[file] = MzMLFile.Inspect(file);
+            sourceByFile[file] = SpectrumSources.Open(file);
             if (temperatureDirectory is null) continue;
 
             TemperatureSet temperatures = TemperatureCsvReader.Find(file, temperatureDirectory, Log.Info);
@@ -118,6 +119,13 @@ public static class QcCommand
             anyRfa2 |= temperatures.Rfa2 is not null;
             anyRfc2 |= temperatures.Rfc2 is not null;
         }
+
+        // Decided once the readers are open, from what the first of them says its MS2
+        // analyzer is. The readers know their own formats; asking the file again from here
+        // would mean parsing a .raw as if it were mzML, which is how this used to fall back
+        // to a trap tolerance on Astral data without anyone noticing.
+        ResolutionMode resolution = ResolutionMode.Resolve(
+            args, sourceByFile[mzmlFiles[0]].Analyzer, matchOptions, Log.Info);
 
         MarsFeature[] collect;
         if (noHtmlReport)
@@ -128,7 +136,7 @@ public static class QcCommand
         }
         else
         {
-            bool injectionTimeAvailable = CalibrateCommand.ProbeInjectionTime(infoByFile[mzmlFiles[0]]);
+            bool injectionTimeAvailable = CalibrateCommand.ProbeInjectionTime(sourceByFile[mzmlFiles[0]]);
             collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
         }
 
@@ -137,12 +145,12 @@ public static class QcCommand
 
         foreach (string file in mzmlFiles)
         {
-            MzMLFileInfo info = infoByFile[file];
+            ISpectrumSource source = sourceByFile[file];
             int rowsBefore = combined.Count;
             temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
 
             Log.Info($"Matching: {Path.GetFileName(file)}");
-            foreach (SpectrumRecord spectrum in MzMLFile.ReadSpectra(info, msLevel: 2))
+            foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
                 matcher.MatchSpectrum(spectrum, temperatures, combined);
 
             Log.Info($"  {combined.Count - rowsBefore:N0} fragment matches");
@@ -188,6 +196,8 @@ public static class QcCommand
                 resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
+
+        foreach (ISpectrumSource source in sourceByFile.Values) source.Dispose();
 
         Log.Info($"Wrote {reportPath} in {stopwatch.Elapsed.TotalSeconds:F1} s");
         return Program.ExitSuccess;

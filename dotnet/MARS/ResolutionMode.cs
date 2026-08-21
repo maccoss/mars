@@ -1,9 +1,7 @@
 // Copyright (c) University of Washington 2026. Licensed under the MIT License.
 
 using System;
-using System.Collections.Generic;
 using MARS.Core;
-using MARS.IO;
 
 namespace MARS.Cli;
 
@@ -44,8 +42,14 @@ public sealed class ResolutionMode
     /// user did not give.
     /// </summary>
     /// <param name="options">Mutated in place with the tolerance defaults for the mode.</param>
+    /// <param name="detected">
+    /// What the input said its MS2 analyzer was. Each reader works this out for its own
+    /// format - an mzML from its instrumentConfiguration, a vendor file from the SDK - so this
+    /// takes the answer rather than reaching back into the file for it. Reading a .raw as if
+    /// it were mzML is how this silently fell back to a trap tolerance on Astral data.
+    /// </param>
     public static ResolutionMode Resolve(
-        CommandLineArgs args, IReadOnlyList<string> mzmlFiles, MatchOptions options, Action<string> log)
+        CommandLineArgs args, MassAnalyzerClass detected, MatchOptions options, Action<string> log)
     {
         bool toleranceGiven = args.Has("tolerance");
         bool ppmGiven = args.Has("tolerance-ppm");
@@ -55,7 +59,7 @@ public sealed class ResolutionMode
         {
             "unit" => MassAnalyzerClass.UnitResolution,
             "hram" => MassAnalyzerClass.HighResolution,
-            "auto" => Detect(mzmlFiles, log),
+            "auto" => detected,
             _ => throw new FormatException(
                 $"Option --resolution expects unit, hram or auto, got '{requested}'."),
         };
@@ -99,25 +103,5 @@ public sealed class ResolutionMode
         }
 
         return new ResolutionMode { Analyzer = analyzer };
-    }
-
-    /// <summary>
-    /// Reads the analyzer from the first file. The rest are assumed to match, because a set
-    /// of runs calibrated together has to come from one instrument for the model to mean
-    /// anything - and if they do not, that is worth the mismatch showing up in the numbers.
-    /// </summary>
-    private static MassAnalyzerClass Detect(IReadOnlyList<string> mzmlFiles, Action<string> log)
-    {
-        if (mzmlFiles.Count == 0) return MassAnalyzerClass.Unknown;
-
-        try
-        {
-            return MzMLFile.DetectMs2Analyzer(MzMLFile.Inspect(mzmlFiles[0]));
-        }
-        catch (Exception ex) when (ex is System.IO.IOException or System.IO.InvalidDataException)
-        {
-            log($"  could not read the instrument from {mzmlFiles[0]}: {ex.Message}");
-            return MassAnalyzerClass.Unknown;
-        }
     }
 }

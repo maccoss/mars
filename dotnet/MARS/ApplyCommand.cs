@@ -98,7 +98,7 @@ public static class ApplyCommand
 
         foreach (string file in mzmlFiles)
         {
-            MzMLFileInfo info = MzMLFile.Inspect(file);
+            using ISpectrumSource source = SpectrumSources.Open(file);
             TemperatureSet? temperatures = temperatureDirectory is null
                 ? null
                 : TemperatureCsvReader.Find(file, temperatureDirectory, Log.Debug);
@@ -107,7 +107,7 @@ public static class ApplyCommand
 
             Log.Info($"Calibrating: {Path.GetFileName(file)} -> {Path.GetFileName(outputFile)}");
             CorrectedFileWriter.Write(
-                outputFormat, info, outputFile, calibrator, correctionOptions, temperatures, threads);
+                outputFormat, source, outputFile, calibrator, correctionOptions, temperatures, threads);
 
             if (!validate) continue;
 

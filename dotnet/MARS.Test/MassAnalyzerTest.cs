@@ -133,7 +133,7 @@ public class MassAnalyzerTest
             CommandLineArgs args = CommandLineArgs.Parse(new[] { "qc", "--tolerance", "0.5" });
             options.MzToleranceTh = args.Double("tolerance") ?? ResolutionMode.DefaultToleranceTh;
 
-            ResolutionMode mode = ResolutionMode.Resolve(args, new[] { path }, options, _ => { });
+            ResolutionMode mode = ResolutionMode.Resolve(args, Detect(path), options, _ => { });
 
             Assert.Equal(MassAnalyzerClass.HighResolution, mode.Analyzer);
             Assert.Equal(0.5, options.MzToleranceTh);
@@ -158,7 +158,7 @@ public class MassAnalyzerTest
 
             var options = new MatchOptions();
             CommandLineArgs args = CommandLineArgs.Parse(new[] { "qc" });
-            ResolutionMode mode = ResolutionMode.Resolve(args, new[] { path }, options, _ => { });
+            ResolutionMode mode = ResolutionMode.Resolve(args, Detect(path), options, _ => { });
 
             Assert.True(mode.ReportInPpm);
             Assert.Equal(ResolutionMode.DefaultTolerancePpm, options.TolerancePpm);
@@ -186,7 +186,7 @@ public class MassAnalyzerTest
 
             var options = new MatchOptions();
             CommandLineArgs args = CommandLineArgs.Parse(new[] { "qc", "--resolution", "hram" });
-            ResolutionMode mode = ResolutionMode.Resolve(args, new[] { path }, options, _ => { });
+            ResolutionMode mode = ResolutionMode.Resolve(args, Detect(path), options, _ => { });
 
             Assert.Equal(MassAnalyzerClass.HighResolution, mode.Analyzer);
             Assert.Equal(ResolutionMode.DefaultTolerancePpm, options.TolerancePpm);
@@ -202,7 +202,7 @@ public class MassAnalyzerTest
     {
         CommandLineArgs args = CommandLineArgs.Parse(new[] { "qc", "--resolution", "sideways" });
         Assert.Throws<FormatException>(
-            () => ResolutionMode.Resolve(args, Array.Empty<string>(), new MatchOptions(), _ => { }));
+            () => ResolutionMode.Resolve(args, MassAnalyzerClass.Unknown, new MatchOptions(), _ => { }));
     }
 
     /// <summary>
@@ -254,6 +254,10 @@ public class MassAnalyzerTest
             Delete(directory);
         }
     }
+
+    /// <summary>What a reader would detect for a file already on disk.</summary>
+    private static MassAnalyzerClass Detect(string path) =>
+        MzMLFile.DetectMs2Analyzer(MzMLFile.Inspect(path));
 
     private static MassAnalyzerClass Detect(SyntheticMzML.MassAnalyzerLayout layout)
     {

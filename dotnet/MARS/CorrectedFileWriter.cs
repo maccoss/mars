@@ -38,7 +38,7 @@ internal static class CorrectedFileWriter
 {
     public static void Write(
         MarsOutputFormat format,
-        MzMLFileInfo info,
+        ISpectrumSource source,
         string outputPath,
         MzCalibrator calibrator,
         CorrectionOptions correctionOptions,
@@ -47,10 +47,12 @@ internal static class CorrectedFileWriter
     {
         Log.Info($"Writing: {Path.GetFileName(outputPath)}");
 
-        if (format == MarsOutputFormat.MzML)
+        // Splice only when there is something to splice into. An mzML input can be copied and
+        // patched; a vendor file cannot, so its mzML has to be built like any other format.
+        if (format == MarsOutputFormat.MzML && source is MzMLSpectrumSource mzml)
         {
             MzMLWriteResult spliced = MzMLWriter.Write(
-                info,
+                mzml.Info,
                 outputPath,
                 () => new CalibratingTransform(calibrator, correctionOptions, temperatures),
                 new MzMLWriteOptions { MaxDegreeOfParallelism = threads },
@@ -63,17 +65,21 @@ internal static class CorrectedFileWriter
 
         PwizWriteResult written = PwizOutput.Write(new PwizWriteRequest
         {
-            InputPath = info.Path,
+            InputPath = source.Path,
             OutputPath = outputPath,
             Format = format,
             Calibrator = calibrator,
             Options = correctionOptions,
-            AcquisitionStartTime = info.AcquisitionStartTime,
+            AcquisitionStartTime = source.AcquisitionStartTime,
             Temperatures = temperatures,
 
-            // Match what the input used. pwiz's own default is 64-bit uncompressed, which
-            // makes the output substantially larger than the file it came from.
-            Encoding = MzMLEncoding.Sniff(info.Path),
+            // Match what the input used, when the input is an mzML that can be read for it.
+            // pwiz's own default is 64-bit uncompressed, which makes the output substantially
+            // larger than the file it came from. A vendor file has no encoding to copy, so it
+            // takes the default, which is what msconvert would have written anyway.
+            Encoding = SpectrumSources.IsNative(source.Path)
+                ? MzMLEncoding.Sniff(source.Path)
+                : SpectrumEncoding.Default,
         });
 
         Report(written.SpectraCorrected, written.SpectraSeen, written.OutputLength,

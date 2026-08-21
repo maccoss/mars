@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Pwiz availability, and the runtime settings a vendor SDK needs from the executable. -->
+  <Import Project="..\Pwiz.props" />
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>MARS.Cli</RootNamespace>

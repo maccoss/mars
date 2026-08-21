@@ -57,12 +57,11 @@ internal static class PwizWriteBackend
 
     private static WriteFormat FormatOf(MarsOutputFormat format) => format switch
     {
+        // Reached only when the input was a vendor file: an mzML input is spliced instead.
+        MarsOutputFormat.MzML => WriteFormat.Mzml,
         MarsOutputFormat.MzXml => WriteFormat.MzXml,
         MarsOutputFormat.MzMLb => WriteFormat.MzMLb,
         MarsOutputFormat.Mgf => WriteFormat.Mgf,
-
-        // mzML is refused earlier, by PwizOutput.Write, so that the byte-splice writer stays
-        // the only thing that produces it.
         _ => throw new ArgumentOutOfRangeException(
             nameof(format), format, "No pwiz writer for this format."),
     };

@@ -53,6 +53,25 @@ high-resolution data no longer needs to be told what it is.
   the model file, the CSV dumps, the Python parity comparison - because they are identifiers
   there. Type is larger throughout.
 
+- **Thermo `.raw` read directly.** `qc`, `calibrate` and `apply` open a Thermo raw file
+  without a conversion step, through the pwiz-sharp vendor reader. `--mzml`, `--mzml-dir` and
+  bare file arguments all accept it; a directory now picks up every format MARS can read.
+
+  It gives the same answer as the converted mzML. The same Astral run matched against the same
+  DIA-NN library returns 230,781 fragment matches either way, with the same median, standard
+  deviation and MAD to every reported digit. The mass analyzer is detected from the vendor file
+  as it is from an mzML, so an Astral raw picks 10 ppm and a ppm-scaled report on its own.
+
+  Reading a raw is not faster - 53 s against 15 s for the converted mzML on that run, and
+  vendor reading does not thread - so what is saved is the conversion and its intermediate
+  file, not the read.
+
+  mzML written from a raw is built by pwiz rather than spliced, because there is no input mzML
+  to copy: the passthrough guarantee covers mzML in and mzML out, and is not claimed otherwise.
+
+  Thermo only for now. Other vendors are recognized well enough to report what is missing
+  rather than "unrecognized file".
+
 - **`--output-format mzXML`, `mzMLb` or `mgf`,** on `calibrate` and `apply`. mzML remains the
   default and is still written by MARS's own byte-splice writer, which copies the input and
   replaces only the m/z arrays it corrected. The other formats have no input to splice into,

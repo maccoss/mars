@@ -19,17 +19,11 @@
   <PropertyGroup>
     <RootNamespace>MARS.Pwiz</RootNamespace>
     <AssemblyName>MARS.Pwiz</AssemblyName>
-    <Description>Writes MARS-corrected spectra through pwiz-sharp, for formats beyond mzML.</Description>
+    <Description>Reads vendor formats and writes non-mzML formats, through pwiz-sharp.</Description>
+
   </PropertyGroup>
 
-  <PropertyGroup>
-    <!-- Default to a sibling organisation checkout, which is where a pwiz clone naturally
-         lands next to a mars one. -->
-    <PwizSharpDir Condition="'$(PwizSharpDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\ProteoWizard\pwiz\pwiz-sharp</PwizSharpDir>
-    <PwizMsDataProject>$(PwizSharpDir)\pwiz\src\MsData\MsData.csproj</PwizMsDataProject>
-    <PwizAvailable Condition="Exists('$(PwizMsDataProject)')">true</PwizAvailable>
-    <PwizAvailable Condition="'$(PwizAvailable)' == ''">false</PwizAvailable>
-  </PropertyGroup>
+  <Import Project="..\Pwiz.props" />
 
   <PropertyGroup Condition="'$(PwizAvailable)' != 'true'">
     <DefineConstants>$(DefineConstants);MARS_NO_PWIZ</DefineConstants>
@@ -38,6 +32,8 @@
   <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
     <Compile Remove="MarsSpectrumList.cs" />
     <Compile Remove="PwizWriteBackend.cs" />
+    <Compile Remove="PwizSpectrumSource.cs" />
+    <Compile Remove="VendorReaders.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(PwizAvailable)' == 'true'">
@@ -51,6 +47,20 @@
       SpectrumListWrapper (Analysis), which costs three delegating members.
     -->
     <ProjectReference Include="$(PwizMsDataProject)" />
+
+    <!--
+      The Thermo reader, for reading .raw directly. This is the reference that costs
+      something: Thermo.csproj pulls Analysis, which pulls the Waters reader, which stages a
+      native Windows-only MassLynxRaw.dll into the output. Nothing in the Thermo path touches
+      Waters, so it looks vestigial upstream - worth raising there rather than working around
+      here. The Thermo SDK itself is managed and cross-platform.
+
+      Vendor SDKs are license-gated: without -p:IAgreeToVendorLicenses=true the archive is not
+      extracted and the reader compiles to something that recognizes a .raw but refuses to
+      read it. MARS treats that the same as pwiz being absent.
+    -->
+    <ProjectReference Include="$(PwizThermoProject)"
+                      Condition="Exists('$(PwizThermoProject)')" />
   </ItemGroup>
 
   <ItemGroup>

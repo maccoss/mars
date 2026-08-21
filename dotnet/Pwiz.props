@@ -1,0 +1,36 @@
+<Project>
+
+  <!--
+    Where pwiz-sharp is, and whether this build has it.
+
+    Imported by both MARS.Pwiz (which needs the project references) and MARS (which needs the
+    runtime settings, because a few of them are properties of the executable rather than of the
+    library that needs them).
+  -->
+  <PropertyGroup>
+    <!-- Default to a sibling organisation checkout: three levels up from dotnet/ is the
+         directory holding the org folders, so mars/ and ProteoWizard/ sit side by side. -->
+    <PwizSharpDir Condition="'$(PwizSharpDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\ProteoWizard\pwiz\pwiz-sharp</PwizSharpDir>
+    <PwizMsDataProject>$(PwizSharpDir)\pwiz\src\MsData\MsData.csproj</PwizMsDataProject>
+    <PwizThermoProject>$(PwizSharpDir)\pwiz\src\Vendor\Thermo\Thermo.csproj</PwizThermoProject>
+    <PwizAvailable Condition="Exists('$(PwizMsDataProject)')">true</PwizAvailable>
+    <PwizAvailable Condition="'$(PwizAvailable)' == ''">false</PwizAvailable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PwizAvailable)' == 'true'">
+    <!--
+      The Thermo SDK constructs CultureInfo("en-US") directly, which throws under
+      globalization-invariant mode: "Only the invariant culture is supported". MARS sets
+      InvariantGlobalization for everything else, and this is a property of the EXECUTABLE -
+      it lands in runtimeconfig.json - so setting it on MARS.Pwiz alone does nothing at
+      runtime. It is relaxed only for builds that actually carry a vendor reader; a MARS
+      built without pwiz keeps the invariant behaviour it has always had.
+
+      MARS's own parsing and formatting name CultureInfo.InvariantCulture explicitly and its
+      string comparisons are Ordinal, so this changes what the runtime *can* do rather than
+      what MARS does. The determinism job in CI is the backstop.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

@@ -79,7 +79,7 @@ public static class CalibrateCommand
         bool noRecalibrate = args.Flag("no-recalibrate");
         string? temperatureDirectory = args.String("temperature-dir");
 
-        ResolutionMode resolution = ResolutionMode.Resolve(args, mzmlFiles, matchOptions, Log.Info);
+
 
         // Resolved before any work: an output format this build cannot write, or one that
         // does not exist, should cost a second rather than a full training run.
@@ -104,14 +104,16 @@ public static class CalibrateCommand
 
         // ---- Pass 1: match fragments across every input file -------------------------
         var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
-        var infoByFile = new Dictionary<string, MzMLFileInfo>(StringComparer.OrdinalIgnoreCase);
+
+        // Opened once and held: a vendor reader keeps a handle on the file, and reopening it
+        // per pass would pay the SDK's startup cost twice.
+        var sourceByFile = new Dictionary<string, ISpectrumSource>(StringComparer.OrdinalIgnoreCase);
 
         bool anyTemperature = false;
         bool anyRfa2 = false, anyRfc2 = false;
         foreach (string file in mzmlFiles)
         {
-            MzMLFileInfo info = MzMLFile.Inspect(file);
-            infoByFile[file] = info;
+            sourceByFile[file] = SpectrumSources.Open(file);
 
             if (temperatureDirectory is not null)
             {
@@ -123,9 +125,16 @@ public static class CalibrateCommand
             }
         }
 
-        bool injectionTimeAvailable = ProbeInjectionTime(infoByFile[mzmlFiles[0]]);
+        bool injectionTimeAvailable = ProbeInjectionTime(sourceByFile[mzmlFiles[0]]);
         if (!injectionTimeAvailable)
             Log.Warn("No ion injection time in the first MS2 spectrum; the injection-time feature group is off.");
+
+        // Decided once the readers are open, from what the first of them says its MS2
+        // analyzer is. The readers know their own formats; asking the file again from here
+        // would mean parsing a .raw as if it were mzML, which is how this used to fall back
+        // to a trap tolerance on Astral data without anyone noticing.
+        ResolutionMode resolution = ResolutionMode.Resolve(
+            args, sourceByFile[mzmlFiles[0]].Analyzer, matchOptions, Log.Info);
 
         MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
         var table = new MatchTable(collect, keepDetail: keepDetail);
@@ -134,12 +143,12 @@ public static class CalibrateCommand
         foreach (string file in mzmlFiles)
         {
             Log.Info($"Matching: {Path.GetFileName(file)}");
-            MzMLFileInfo info = infoByFile[file];
+            ISpectrumSource source = sourceByFile[file];
             temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
 
             long before = table.Count;
             long spectra = 0;
-            foreach (SpectrumRecord spectrum in MzMLFile.ReadSpectra(info, msLevel: 2))
+            foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
             {
                 matcher.MatchSpectrum(spectrum, temperatures, table);
                 spectra++;
@@ -235,7 +244,7 @@ public static class CalibrateCommand
                 temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
                 CorrectedFileWriter.Write(
                     outputFormat,
-                    infoByFile[file],
+                    sourceByFile[file],
                     CorrectedFileWriter.OutputPathFor(file, outputDirectory, outputFormat),
                     calibrator,
                     correctionOptions,
@@ -243,6 +252,8 @@ public static class CalibrateCommand
                     args.Int("threads") ?? -1);
             }
         }
+
+        foreach (ISpectrumSource source in sourceByFile.Values) source.Dispose();
 
         Log.Info($"Done in {stopwatch.Elapsed.TotalSeconds:F1} s. Output directory: {outputDirectory}");
         return Program.ExitSuccess;
@@ -253,9 +264,9 @@ public static class CalibrateCommand
     /// twenty-two features are undefined without one, and if it is absent that whole feature
     /// group is dropped rather than filled with zeros.
     /// </summary>
-    internal static bool ProbeInjectionTime(MzMLFileInfo info)
+    internal static bool ProbeInjectionTime(ISpectrumSource source)
     {
-        foreach (SpectrumRecord spectrum in MzMLFile.ReadSpectra(info, msLevel: 2))
+        foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
             return spectrum.InjectionTime.HasValue;
         return false;
     }

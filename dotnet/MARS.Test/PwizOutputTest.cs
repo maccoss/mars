@@ -53,22 +53,45 @@ public class PwizOutputTest
     }
 
     /// <summary>
-    /// mzML is refused here on purpose. MARS writes it by splicing corrected bytes into a copy
-    /// of the input, so everything it did not change is identical by construction; routing it
-    /// through pwiz would quietly give that up for no gain.
+    /// Splicing means copying the input and replacing the ranges that changed, so it needs an
+    /// mzML to copy. An mzML input can be spliced; a vendor file has nothing to splice into
+    /// and its mzML has to be built like any other format.
+    /// </summary>
+    [Theory]
+    [InlineData("run.mzML", true)]
+    [InlineData("RUN.MZML", true)]
+    [InlineData("run.raw", false)]
+    [InlineData("run.wiff2", false)]
+    [InlineData("run.d", false)]
+    public void OnlyAnMzMLInputCanBeSpliced(string path, bool expected) =>
+        Assert.Equal(expected, SpectrumSources.CanSplice(path));
+
+    /// <summary>Every format MARS can read is recognized, whatever this build can open.</summary>
+    [Theory]
+    [InlineData("run.mzML")]
+    [InlineData("run.raw")]
+    [InlineData("run.wiff2")]
+    public void TheReadableFormatsAreRecognized(string path) =>
+        Assert.True(SpectrumSources.IsReadable(path));
+
+    [Theory]
+    [InlineData("notes.txt")]
+    [InlineData("run.mzXML")]
+    public void AnUnreadableFormatIsNotOffered(string path) =>
+        Assert.False(SpectrumSources.IsReadable(path));
+
+    /// <summary>
+    /// A vendor format asked of a build that cannot open it must say so, rather than failing
+    /// somewhere inside a reader with a load error.
     /// </summary>
     [Fact]
-    public void MzMLIsNotWrittenThroughPwiz()
+    public void AVendorFormatThisBuildCannotReadIsRefusedClearly()
     {
-        var request = new PwizWriteRequest
-        {
-            InputPath = "in.mzML",
-            OutputPath = "out.mzML",
-            Format = MarsOutputFormat.MzML,
-        };
+        string path = Path.Combine(Path.GetTempPath(), "nonexistent-" + Guid.NewGuid().ToString("N") + ".wiff2");
 
-        var ex = Assert.Throws<NotSupportedException>(() => PwizOutput.Write(request));
-        Assert.Contains("byte-splice", ex.Message, StringComparison.OrdinalIgnoreCase);
+        // Sciex is never referenced, so this is refused whether or not pwiz is present.
+        var ex = Assert.Throws<NotSupportedException>(() => SpectrumSources.Open(path));
+        Assert.Contains("Sciex", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
