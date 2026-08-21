@@ -438,7 +438,7 @@ public sealed class ResidualTrimTest
         MzCalibrator without = MzCalibrator.Fit(
             BuildContaminated(0.15), new CalibrationOptions
             {
-                CvFolds = 5, ImportanceSampleRows = 0, TrimResidualSigma = 0,
+                CvFolds = 5, ImportanceSampleRows = 0, Robust = RobustFit.None,
             },
             absoluteTimeOffset: 0);
 
@@ -458,12 +458,12 @@ public sealed class ResidualTrimTest
     {
         MzCalibrator a = MzCalibrator.Fit(
             BuildContaminated(0.1),
-            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, TrimResidualSigma = 0 },
+            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, Robust = RobustFit.None },
             absoluteTimeOffset: 0);
 
         MzCalibrator b = MzCalibrator.Fit(
             BuildContaminated(0.1),
-            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, TrimResidualSigma = 0 },
+            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, Robust = RobustFit.None },
             absoluteTimeOffset: 0);
 
         // Deterministic, and identical to itself: disabling the second pass must not leave

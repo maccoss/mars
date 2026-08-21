@@ -99,7 +99,7 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   in-sample/out-of-fold gap. One held-out number says how the model did on one split;
   five say whether that number was luck.
 
-- **`--trim-sigma` (default 3) fits twice**, dropping training rows the first pass could not
+- **`--robust` (default `trim`) fits twice**, dropping training rows the first pass could not
   explain. Matching takes the most intense peak in the tolerance window and sometimes that
   peak is not the fragment; those rows carry a delta that is not a mass error, and squared
   error lets them pull the fit. They are identifiable as a population - on the reference
@@ -108,7 +108,13 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   against the edge of the matching window. Removing them improves out-of-fold accuracy from
   0.0445 to 0.0442 Th, and the improvement is flat from 2 to 3 sigma, which says it is
   removing a contaminant rather than tuning against the folds. Only training rows are
-  trimmed; held-out rows are always scored in full. `--trim-sigma 0` disables it.
+  trimmed; held-out rows are always scored in full. `--robust none` disables the second
+  pass, and `--robust-sigma` moves the threshold.
+- **`--robust huber`** is available and measures slightly worse, which is worth knowing:
+  a robust loss assumes an outlier is an extreme measurement of the right quantity, but a
+  mismatched peak is an accurate measurement of a different ion, and at three robust sigma
+  Huber still leaves such a row 79% of its weight. It is the better choice when the tail
+  is heavy but real rather than mislabelled.
 ## Bug Fixes
 
 Four defects found while transcribing the Python implementation. Three affect files that

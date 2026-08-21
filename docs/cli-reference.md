@@ -123,7 +123,8 @@ surface than one model per file.
 | `--n-estimators <n>` | 100 | Boosting rounds |
 | `--max-depth <n>` | 6 | Tree depth |
 | `--learning-rate <x>` | 0.1 | Shrinkage |
-| `--trim-sigma <x>` | 3 | Refit without training rows whose residual exceeds this many robust sigma. 0 disables |
+| `--robust <mode>` | `trim` | Second pass over rows the first could not explain: `trim`, `huber`, or `none` |
+| `--robust-sigma <x>` | 3 | Residual threshold for `--robust`, in robust sigma. 0 disables the second pass |
 | `--cv-folds <n>` | 5 | Cross-validation folds, split by peptide. 0 trains a single model |
 | `--validation-split <x>` | 0.2 | Held-out fraction, used only when `--cv-folds 0` |
 | `--max-training-rows <n>` | no cap | Cap training rows by even stride |

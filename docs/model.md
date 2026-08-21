@@ -152,8 +152,8 @@ Weak peaks, in sparse spectra, sitting against the edge of the matching window. 
 a wrong assignment looks like. The core alone has MAD 0.0389 Th and a near-Gaussian shape
 (std/MAD 1.56); including the tail the ratio is 1.95, which is the tail announcing itself.
 
-So MARS fits once, drops training rows whose residual exceeds `--trim-sigma` robust standard
-deviations, and fits again. Two details matter:
+So MARS fits once, then fits again with those rows removed - `--robust trim`, the default.
+Two details matter:
 
 - **The scale is derived from the median absolute deviation**, not the standard deviation.
   The outliers being looked for would inflate a standard deviation enough to hide
@@ -162,9 +162,9 @@ deviations, and fits again. Two details matter:
   hard cases from the measurement as well would improve the reported number without
   improving anything real.
 
-Measured out-of-fold, held-out rows scored in full:
+`--robust-sigma` sets the threshold. Measured out-of-fold, held-out rows scored in full:
 
-| `--trim-sigma` | out-of-fold MAD | rows trimmed |
+| `--robust-sigma` | out-of-fold MAD | rows trimmed |
 |---|---|---|
 | 0 (off) | 0.0445 Th | - |
 | 2 | 0.0442 Th | 11.5% |
@@ -172,13 +172,38 @@ Measured out-of-fold, held-out rows scored in full:
 | 3 (default) | 0.0442 Th | 3.7% |
 | 4 | 0.0443 Th | 1.4% |
 
-A 0.7% improvement - small, but real, and notably **flat across the threshold**, which says
-it is removing a genuine contaminant rather than tuning against the fold. The default takes
-the full benefit while discarding the least data.
+Small, but real, and notably **flat across the threshold**, which says it is removing a
+genuine contaminant rather than tuning against the folds. The default takes the full benefit
+while discarding the least data.
 
-The principled version of this is a robust loss - Huber rather than squared error - which
-would down-weight the tail continuously instead of cutting it. That belongs upstream in
-`Osprey.ML` and is not implemented yet.
+### Why trimming rather than a robust loss
+
+The textbook answer is a robust loss - Huber rather than squared error - which softens the
+tail instead of cutting it. MARS implements that as `--robust huber`, and it does not need a
+new objective: Huber's gradient is the residual clipped to the threshold,
+`clip(r, +/-d) = r * min(1, d/|r|)`, so squared error on weights `w * min(1, d/|r|)` produces
+exactly it. One extra pass of the existing path is a Huber fit.
+
+It measures slightly worse:
+
+| | 600-700 window | 400-500 window |
+|---|---|---|
+| `--robust none` | 0.0445 Th | 0.0523 Th |
+| `--robust trim` | **0.0442 Th** | **0.0505 Th** |
+| `--robust huber` | 0.0443 Th | 0.0518 Th |
+
+The reason is what the outliers are. Huber assumes an outlier is an extreme measurement of
+the right quantity, and softens it accordingly - at three robust sigma it still leaves such a
+row **79% of its weight on average**. But a mismatched peak is not an extreme measurement of
+the fragment's mass error; it is an accurate measurement of a *different ion*. Its label
+carries no information about the quantity being fitted, so leaving it four fifths of its
+influence is not enough. The difference shows up most on the data-poor 400-500 window, where
+there is less real signal to outvote it.
+
+`--robust huber` remains available, and is the better choice if the tail is heavy but real
+rather than mislabelled. The untried middle is a redescending weight - Tukey's biweight goes
+to exactly zero past a multiple of the threshold instead of decaying as `1/|r|` - which would
+soften the boundary while still eliminating the far tail.
 
 > Do not reach for a tighter `--tolerance` instead. A wide window is a robustness property:
 > a faster ion-trap scan rate gives worse mass accuracy, and a tolerance tuned to one cohort

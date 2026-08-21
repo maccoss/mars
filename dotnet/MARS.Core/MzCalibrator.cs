@@ -7,6 +7,23 @@ using pwiz.Osprey.ML;
 
 namespace MARS.Core;
 
+/// <summary>How the second pass handles rows the first pass could not explain.</summary>
+public enum RobustFit
+{
+    /// <summary>Fit once. Every row counts the same, however implausible its label.</summary>
+    None,
+
+    /// <summary>Drop rows beyond the threshold and fit again.</summary>
+    Trim,
+
+    /// <summary>
+    /// Down-weight rows in proportion to how far past the threshold they sit, and fit again.
+    /// Gentler than <see cref="Trim"/>, and on the reference data slightly worse: a row a
+    /// little past the threshold keeps nearly all of its weight.
+    /// </summary>
+    Huber,
+}
+
 /// <summary>
 /// Hyperparameters, transcribed from the Python MzCalibrator, which constructs
 /// xgboost.XGBRegressor(n_estimators=100, max_depth=6, learning_rate=0.1,
@@ -75,9 +92,18 @@ public sealed class CalibrationOptions
     /// <summary>Rows sampled when estimating permutation importance. 0 disables it.</summary>
     public int ImportanceSampleRows { get; set; } = 50000;
 
+    /// <summary>How the second pass treats rows the first pass could not explain.</summary>
+    /// <remarks>
+    /// Trim rather than Huber, on measurement. Huber is the more principled choice when
+    /// outliers are extreme measurements of the right quantity; here they are measurements
+    /// of the wrong one - the most intense peak in the window was a different ion - so the
+    /// label carries no information at all and softening its influence is not enough. At
+    /// three robust sigma, Huber still leaves such a row 79% of its weight on average.
+    /// </remarks>
+    public RobustFit Robust { get; set; } = RobustFit.Trim;
+
     /// <summary>
-    /// Fit once, then drop training rows whose residual exceeds this many robust standard
-    /// deviations and fit again. 0 disables the second pass.
+    /// Residual threshold for the second pass, in robust standard deviations. 0 disables it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -94,7 +120,7 @@ public sealed class CalibrationOptions
     /// discarding the hard cases from the measurement.
     /// </para>
     /// </remarks>
-    public double TrimResidualSigma { get; set; } = 3.0;
+    public double RobustSigma { get; set; } = 3.0;
 }
 
 public sealed class TrainingStatistics
@@ -335,16 +361,16 @@ public sealed class MzCalibrator
             $"Training on {trainIndex.Length:N0} rows, holding out {validationIndex.Length:N0} " +
             $"by peptide, {nFeat} features");
 
-        (GradientBoostedTrees model, int trimmed) = TrainTrimmed(
+        (GradientBoostedTrees model, int affected) = TrainRobust(
             Gather(x, trainIndex), Gather(y, trainIndex),
             weights is null ? null : Gather(weights, trainIndex), gbtParams,
-            options.TrimResidualSigma);
+            options.Robust, options.RobustSigma);
 
-        if (trimmed > 0)
+        if (affected > 0)
         {
             log?.Invoke(
-                $"  refit without {trimmed:N0} unexplainable rows " +
-                $"({100.0 * trimmed / trainIndex.Length:F1}%)");
+                $"  {DescribeRobust(options.Robust)} {affected:N0} unexplainable rows " +
+                $"({100.0 * affected / trainIndex.Length:F1}%) and refit");
         }
 
         var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
@@ -391,7 +417,7 @@ public sealed class MzCalibrator
         var models = new GradientBoostedTrees[options.CvFolds];
         var perFold = new FoldMetrics[options.CvFolds];
         var outOfFold = new double[x.Length];
-        int trimmedTotal = 0;
+        int affectedTotal = 0;
 
         for (int fold = 0; fold < options.CvFolds; fold++)
         {
@@ -409,11 +435,11 @@ public sealed class MzCalibrator
             // Trim within the fold's own training rows. The held-out rows are scored in
             // full: dropping the hard ones from the measurement as well would improve the
             // reported number without improving anything real.
-            (models[fold], int foldTrimmed) = TrainTrimmed(
+            (models[fold], int foldAffected) = TrainRobust(
                 Gather(x, trainIndex), Gather(y, trainIndex),
                 weights is null ? null : Gather(weights, trainIndex), gbtParams,
-                options.TrimResidualSigma);
-            trimmedTotal += foldTrimmed;
+                options.Robust, options.RobustSigma);
+            affectedTotal += foldAffected;
 
             var heldOutObserved = new double[heldOutIndex.Length];
             var heldOutPredicted = new double[heldOutIndex.Length];
@@ -442,22 +468,22 @@ public sealed class MzCalibrator
         // withhold data from the surface being fitted. The fold models exist to answer a
         // different question, which is whether that surface is real structure or noise, and
         // what it would achieve on a run it was not fitted to.
-        if (trimmedTotal > 0)
+        if (affectedTotal > 0)
         {
             log?.Invoke(
-                $"  folds refit without {trimmedTotal / options.CvFolds:N0} unexplainable rows " +
-                "each, on average");
+                $"  folds {DescribeRobust(options.Robust)} " +
+                $"{affectedTotal / options.CvFolds:N0} unexplainable rows each, on average");
         }
 
         log?.Invoke($"  fitting the correction model on all {x.Length:N0} rows");
-        (GradientBoostedTrees model, int trimmed) = TrainTrimmed(
-            x, y, weights, gbtParams, options.TrimResidualSigma);
+        (GradientBoostedTrees model, int affected) = TrainRobust(
+            x, y, weights, gbtParams, options.Robust, options.RobustSigma);
 
-        if (trimmed > 0)
+        if (affected > 0)
         {
             log?.Invoke(
-                $"  refit without {trimmed:N0} unexplainable rows " +
-                $"({100.0 * trimmed / x.Length:F1}%)");
+                $"  {DescribeRobust(options.Robust)} {affected:N0} unexplainable rows " +
+                $"({100.0 * affected / x.Length:F1}%) and refit");
         }
         var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
 
@@ -488,14 +514,37 @@ public sealed class MzCalibrator
     }
 
     /// <summary>
-    /// Fits a model, then refits on the rows the first pass could explain.
+    /// Fits a model, then fits again with the rows the first pass could not explain either
+    /// removed or held down.
     /// </summary>
-    /// <returns>The model, and how many rows the second pass left out.</returns>
-    private static (GradientBoostedTrees Model, int Trimmed) TrainTrimmed(
-        double[][] x, double[] y, double[]? weights, GbtParams gbtParams, double sigma)
+    /// <remarks>
+    /// <para>
+    /// <see cref="RobustFit.Huber"/> is a Huber loss, reached by reweighting rather than by
+    /// changing the objective. Huber's gradient is the residual clipped to the threshold,
+    /// <c>clip(r, +/-d) = r * min(1, d/|r|)</c>, and squared error on weights
+    /// <c>w * min(1, d/|r|)</c> produces exactly that gradient. So one extra pass of the
+    /// existing squared-error path gives the robust fit, with no new objective to add,
+    /// validate and keep bit-identical upstream.
+    /// </para>
+    /// <para>
+    /// Compared with <see cref="RobustFit.Trim"/> it is the same idea made continuous: a row
+    /// two thresholds out counts half as much rather than either fully or not at all, so
+    /// there is no cliff for a row to sit astride, and a genuinely large but real error is
+    /// still heard.
+    /// </para>
+    /// <para>
+    /// Weights are renormalized to mean 1 afterwards, because <c>min_child_weight</c> and
+    /// <c>reg_lambda</c> are thresholds on summed weights; without it, down-weighting the
+    /// tail would quietly tighten both.
+    /// </para>
+    /// </remarks>
+    /// <returns>The model, and how many rows the second pass removed or down-weighted.</returns>
+    private static (GradientBoostedTrees Model, int Affected) TrainRobust(
+        double[][] x, double[] y, double[]? weights, GbtParams gbtParams,
+        RobustFit mode, double sigma)
     {
         GradientBoostedTrees first = GradientBoostedTrees.Train(x, y, gbtParams, weights);
-        if (!(sigma > 0) || x.Length < 100) return (first, 0);
+        if (mode == RobustFit.None || !(sigma > 0) || x.Length < 100) return (first, 0);
 
         var residual = new double[x.Length];
         for (int i = 0; i < x.Length; i++) residual[i] = y[i] - first.ScoreSingle(x[i]);
@@ -507,24 +556,50 @@ public sealed class MzCalibrator
         if (!(scale > 0)) return (first, 0);
 
         double limit = sigma * scale;
-        var keep = new List<int>(x.Length);
-        for (int i = 0; i < x.Length; i++)
+
+        if (mode == RobustFit.Trim)
         {
-            if (Math.Abs(residual[i] - summary.Median) <= limit) keep.Add(i);
+            var keep = new List<int>(x.Length);
+            for (int i = 0; i < x.Length; i++)
+            {
+                if (Math.Abs(residual[i] - summary.Median) <= limit) keep.Add(i);
+            }
+
+            int trimmed = x.Length - keep.Count;
+
+            // Refitting on a much smaller set would be a different model rather than a
+            // cleaned one, so an unexpectedly aggressive trim is declined instead of applied.
+            if (trimmed == 0 || keep.Count < x.Length / 2) return (first, 0);
+
+            int[] kept = keep.ToArray();
+            return (
+                GradientBoostedTrees.Train(
+                    Gather(x, kept), Gather(y, kept), gbtParams,
+                    weights is null ? null : Gather(weights, kept)),
+                trimmed);
         }
 
-        int trimmed = x.Length - keep.Count;
+        var robust = new double[x.Length];
+        double sum = 0;
+        int held = 0;
+        for (int i = 0; i < x.Length; i++)
+        {
+            double excess = Math.Abs(residual[i] - summary.Median);
+            double factor = excess > limit ? limit / excess : 1.0;
+            if (factor < 1.0) held++;
+            robust[i] = (weights is null ? 1.0 : weights[i]) * factor;
+            sum += robust[i];
+        }
 
-        // Refitting on a much smaller set would be a different model rather than a cleaned
-        // one, so an unexpectedly aggressive trim is declined instead of applied.
-        if (trimmed == 0 || keep.Count < x.Length / 2) return (first, 0);
+        if (held == 0) return (first, 0);
 
-        int[] kept = keep.ToArray();
-        return (
-            GradientBoostedTrees.Train(
-                Gather(x, kept), Gather(y, kept), gbtParams,
-                weights is null ? null : Gather(weights, kept)),
-            trimmed);
+        double mean = sum / x.Length;
+        if (mean > 0)
+        {
+            for (int i = 0; i < robust.Length; i++) robust[i] /= mean;
+        }
+
+        return (GradientBoostedTrees.Train(x, y, gbtParams, robust), held);
     }
 
     /// <summary>
@@ -571,6 +646,9 @@ public sealed class MzCalibrator
     {
         if (table.AnyFinite(feature)) active.Add(feature);
     }
+
+    private static string DescribeRobust(RobustFit mode) =>
+        mode == RobustFit.Trim ? "dropped" : "held down";
 
     private static T[] Gather<T>(T[] source, int[] index)
     {
