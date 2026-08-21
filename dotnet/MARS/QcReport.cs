@@ -37,18 +37,24 @@ public static class QcReport
         text.AppendLine();
 
         text.AppendLine("Before Calibration:");
-        AppendSummary(text, stats.Before);
+        AppendSummary(text, stats.Before, stats.BeforePpm);
         text.AppendLine();
 
         text.AppendLine(calibrator.CrossValidation is null
             ? "After Calibration:"
             : "After Calibration (these files, corrected):");
-        AppendSummary(text, stats.After);
+        AppendSummary(text, stats.After, stats.AfterPpm);
         text.AppendLine();
 
         text.AppendLine($"Improvement: {Reduction(stats.Before.StdDev, stats.After.StdDev):F1}% reduction in std dev");
         text.AppendLine($"             {Reduction(stats.Before.Mad, stats.After.Mad):F1}% reduction in MAD");
         text.AppendLine($"             {Reduction(stats.Before.Rms, stats.After.Rms):F1}% reduction in RMS");
+        if (stats.BeforePpm is ErrorSummary bp && stats.AfterPpm is ErrorSummary ap)
+        {
+            text.AppendLine(
+                $"             MAD {bp.Mad:F2} -> {ap.Mad:F2} ppm, " +
+                $"median {bp.Median:+0.00;-0.00} -> {ap.Median:+0.00;-0.00} ppm");
+        }
         text.AppendLine();
 
         if (calibrator.CrossValidation is CrossValidationReport estimate)
@@ -57,8 +63,9 @@ public static class QcReport
             // figures above describe these files. This one describes what the same procedure
             // would achieve on a run it was not fitted to, which is what `mars apply` does.
             text.AppendLine(
-                $"Expected on data not used to fit: MAD {estimate.OutOfFold.Mad:F4} Th " +
-                $"({estimate.OutOfFold.MadReduction:F1}% reduction), from cross-validation below.");
+                $"Expected on data not used to fit: MAD {estimate.OutOfFold.Mad:F4} Th" +
+                (estimate.OutOfFoldPpm is FoldMetrics oofPpm ? $" ({oofPpm.Mad:F2} ppm)" : string.Empty) +
+                $", {estimate.OutOfFold.MadReduction:F1}% reduction, from cross-validation below.");
         }
 
         text.AppendLine();
@@ -69,25 +76,32 @@ public static class QcReport
             text.AppendLine(new string('=', 40));
             text.AppendLine($"Folds: {cv.Folds}  over {cv.Groups:N0} peptides");
             text.AppendLine();
-            text.AppendLine("  fold        rows      MAD Th     RMS Th   reduction   Pearson r");
+            bool ppm = cv.PerFoldPpm is not null;
+            text.AppendLine(ppm
+                ? "  fold        rows      MAD Th    MAD ppm     RMS ppm   reduction   Pearson r"
+                : "  fold        rows      MAD Th     RMS Th   reduction   Pearson r");
             for (int i = 0; i < cv.PerFold.Length; i++)
             {
                 FoldMetrics fold = cv.PerFold[i];
-                text.AppendLine(
-                    $"  {i + 1,4}  {fold.Rows,10:N0}  {fold.Mad,10:F4} {fold.Rms,10:F4}" +
-                    $"  {fold.MadReduction,9:F1}%  {fold.PearsonR,10:F4}");
+                text.AppendLine(ppm
+                    ? $"  {i + 1,4}  {fold.Rows,10:N0}  {fold.Mad,10:F4} {cv.PerFoldPpm![i].Mad,10:F2}" +
+                      $"  {cv.PerFoldPpm[i].Rms,10:F2}  {fold.MadReduction,9:F1}%  {fold.PearsonR,10:F4}"
+                    : $"  {i + 1,4}  {fold.Rows,10:N0}  {fold.Mad,10:F4} {fold.Rms,10:F4}" +
+                      $"  {fold.MadReduction,9:F1}%  {fold.PearsonR,10:F4}");
             }
 
             text.AppendLine();
             text.AppendLine(
-                $"  pooled out-of-fold: MAD {cv.OutOfFold.Mad:F4} Th, RMS {cv.OutOfFold.Rms:F4} Th, " +
-                $"r {cv.OutOfFold.PearsonR:F4}");
+                $"  pooled out-of-fold: MAD {cv.OutOfFold.Mad:F4} Th" +
+                (cv.OutOfFoldPpm is FoldMetrics op ? $" ({op.Mad:F2} ppm)" : string.Empty) +
+                $", RMS {cv.OutOfFold.Rms:F4} Th, r {cv.OutOfFold.PearsonR:F4}");
             text.AppendLine(
                 $"  spread across folds: MAD {cv.MadSpread:F4} Th, RMS {cv.RmsSpread:F4} Th, " +
                 $"r {cv.PearsonRSpread:F4}");
             text.AppendLine(
-                $"  on this data: MAD {cv.InSample.Mad:F4} Th; gap to the estimate above " +
-                $"{cv.OptimismMad:F4} Th ({OptimismVerdict(cv)})");
+                $"  on this data: MAD {cv.InSample.Mad:F4} Th" +
+                (cv.InSamplePpm is FoldMetrics ip ? $" ({ip.Mad:F2} ppm)" : string.Empty) +
+                $"; gap to the estimate above {cv.OptimismMad:F4} Th ({OptimismVerdict(cv)})");
             text.AppendLine();
             text.AppendLine("  Every row above was scored by a model that never saw its peptide,");
             text.AppendLine("  so this is the estimate for a run the model was not fitted to.");
@@ -191,9 +205,24 @@ public static class QcReport
         };
     }
 
-    private static void AppendSummary(StringBuilder text, ErrorSummary summary)
+    private static void AppendSummary(StringBuilder text, ErrorSummary summary, ErrorSummary? ppm)
     {
         text.AppendLine($"  Matches: {summary.Count:N0}");
+
+        // Both scales, always. Th is what an ion trap is specified in and ppm is what a
+        // high-resolution instrument is specified in, and the same file can be read by
+        // people who think in either.
+        if (ppm is ErrorSummary p)
+        {
+            text.AppendLine($"  Mean delta:   {summary.Mean,9:F4} Th   {p.Mean,8:F2} ppm");
+            text.AppendLine($"  Median delta: {summary.Median,9:F4} Th   {p.Median,8:F2} ppm");
+            text.AppendLine($"  Std delta:    {summary.StdDev,9:F4} Th   {p.StdDev,8:F2} ppm");
+            text.AppendLine($"  MAD delta:    {summary.Mad,9:F4} Th   {p.Mad,8:F2} ppm");
+            text.AppendLine($"  RMS delta:    {summary.Rms,9:F4} Th   {p.Rms,8:F2} ppm");
+            text.AppendLine($"  MAE delta:    {summary.Mae,9:F4} Th   {p.Mae,8:F2} ppm");
+            return;
+        }
+
         text.AppendLine($"  Mean delta m/z:   {summary.Mean:F4} Th");
         text.AppendLine($"  Median delta m/z: {summary.Median:F4} Th");
         text.AppendLine($"  Std delta m/z:    {summary.StdDev:F4} Th");

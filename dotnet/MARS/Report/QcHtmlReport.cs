@@ -93,20 +93,16 @@ public static class QcHtmlReport
 
         Figure(html, "Error across retention time and fragment m/z",
             corrected
-                ? "Median error per cell. Structure here is the systematic component MARS exists "
-                  + "to remove; a uniformly blank panel after correction is the goal."
+                ? "Median error per cell, both panels on one color scale so they can be compared "
+                  + "directly. Structure on the left is the systematic component MARS exists to "
+                  + "remove; the right panel washing out is the goal. Blank cells held too few "
+                  + "fragments to take a median from."
                 : "Median error per cell. Visible structure - bands, gradients, blocks - is "
                   + "systematic error, and systematic error is the kind MARS can remove. A "
-                  + "featureless panel means the error is mostly noise.",
-            Charts.ErrorHeatmap(
-                data.RetentionTime, data.FragmentMz, data.ErrorBefore, "Th",
-                corrected ? "Before correction" : "As measured"));
-
-        if (corrected)
-        {
-            Figure(html, null, null,
-                Charts.ErrorHeatmap(data.RetentionTime, data.FragmentMz, data.ErrorAfter, "Th", "After correction"));
-        }
+                  + "featureless panel means the error is mostly noise. Blank cells held too few "
+                  + "fragments to take a median from.",
+            Charts.ErrorHeatmapPair(
+                data.RetentionTime, data.FragmentMz, data.ErrorBefore, data.ErrorAfter, "Th"));
 
         AppendCrossValidation(html, data.CrossValidation);
 
@@ -392,34 +388,32 @@ public static class QcHtmlReport
 
     // Light and dark are both handled, because a report that is emailed gets opened in
     // whatever the recipient happens to use.
+    // White, deliberately, rather than following the reader's system theme. A QC report gets
+    // printed, pasted into a slide, and read next to figures from other tools, all of which
+    // assume a white page - and the density rasters cannot follow a theme anyway, so a dark
+    // surround would leave them sitting in a bright rectangle.
     private const string Style = """
         :root {
-          --bg: #ffffff; --fg: #1a1d21; --muted: #61686f; --grid: #e8ebee;
-          --axis: #9aa2aa; --card: #f7f8fa; --border: #dfe3e8; --accent: #3f7fbf;
-        }
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --bg: #14171a; --fg: #e6e9ec; --muted: #98a1a9; --grid: #23282d;
-            --axis: #555d65; --card: #1b1f23; --border: #2a2f35; --accent: #6ba4dd;
-          }
+          --bg: #ffffff; --fg: #1a1d21; --muted: #5b6169; --grid: #e6e9ec;
+          --axis: #8b939b; --card: #ffffff; --border: #d9dee3; --accent: #3f7fbf;
         }
         * { box-sizing: border-box; }
         body {
           margin: 0; background: var(--bg); color: var(--fg);
           font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
         }
-        main { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
-        h1 { font-size: 24px; margin: 0 0 4px; }
-        h2 { font-size: 15px; margin: 28px 0 10px; letter-spacing: .01em; }
-        h3 { font-size: 14px; margin: 0 0 4px; }
+        main { max-width: 940px; margin: 0 auto; padding: 32px 20px 64px; }
+        h1 { font-size: 25px; margin: 0 0 4px; }
+        h2 { font-size: 16px; margin: 30px 0 10px; letter-spacing: .01em; }
+        h3 { font-size: 15px; margin: 0 0 4px; }
         .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
         .verdict {
-          background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+          background: #f6f8fa; border: 1px solid var(--border); border-left: 3px solid var(--accent);
           border-radius: 4px; padding: 12px 14px; margin: 0 0 22px;
         }
         .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
-        section { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; }
+        section { background: #f9fafb; border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; }
         section h2 { margin-top: 0; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         td, th { padding: 3px 0; text-align: left; vertical-align: top; }
@@ -427,7 +421,7 @@ public static class QcHtmlReport
         .num { text-align: right; font-variant-numeric: tabular-nums; }
         .files { margin: 0; padding-left: 18px; font-size: 13px; word-break: break-all; }
         figure {
-          margin: 20px 0 0; padding: 14px; background: var(--card);
+          margin: 20px 0 0; padding: 14px; background: #ffffff;
           border: 1px solid var(--border); border-radius: 4px;
         }
         figcaption { color: var(--muted); font-size: 13px; margin: 8px 0 0; }

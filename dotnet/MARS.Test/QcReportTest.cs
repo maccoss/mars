@@ -161,8 +161,8 @@ public sealed class QcHtmlReportTest
         {
             string html = File.ReadAllText(path);
 
-            // One panel per feature, plus histogram, two heatmaps and importance.
-            int expected = data.Features.Count + 4;
+            // One panel per feature, plus histogram, the heatmap pair and importance.
+            int expected = data.Features.Count + 3;
             Assert.Equal(expected, Regex.Matches(html, "<svg ").Count);
             Assert.Contains("log_intensity", html, StringComparison.Ordinal);
         }
@@ -223,8 +223,8 @@ public sealed class QcHtmlReportTest
             // calibrating a run from its own species is not cheating - see qc-report.md.
             Assert.Contains("Gap ", html, StringComparison.Ordinal);
 
-            // Histogram, two heatmaps, importance, two fold-spread figures, one per feature.
-            Assert.Equal(withCv.Features.Count + 6, Regex.Matches(html, "<svg ").Count);
+            // Histogram, the heatmap pair, importance, two fold-spread figures, one per feature.
+            Assert.Equal(withCv.Features.Count + 5, Regex.Matches(html, "<svg ").Count);
         }
         finally
         {
@@ -269,7 +269,7 @@ public sealed class QcHtmlReportTest
             Assert.DoesNotContain("Feature importance", html, StringComparison.Ordinal);
             Assert.Contains("As measured", html, StringComparison.Ordinal);
 
-            // Histogram, one heatmap, one panel per feature - and no second heatmap.
+            // Histogram, the heatmap, one panel per feature.
             Assert.Equal(preCalibration.Features.Count + 2, Regex.Matches(html, "<svg ").Count);
         }
         finally

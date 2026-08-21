@@ -14,7 +14,7 @@ namespace MARS.Report;
 /// The density panels are the report's bulk: a couple of dozen panels of several thousand
 /// cells each. Drawing them as SVG rectangles produced a six-megabyte file, too large to
 /// email, and merging runs only reached five. As a PNG the same panel is a few kilobytes,
-/// because a run of similar colours is exactly what deflate is good at.
+/// because a run of similar colors is exactly what deflate is good at.
 ///
 /// Axes, labels and trend lines stay vector; only the density itself is raster, which is
 /// also what a plotting library would do. There is no imaging dependency here - a PNG is a
@@ -39,14 +39,14 @@ public static class Png
         BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0), width);
         BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
         header[8] = 8;   // bits per channel
-        header[9] = 2;   // colour type 2: truecolour RGB
+        header[9] = 2;   // color type 2: truecolor RGB
         header[10] = 0;  // deflate
         header[11] = 0;  // adaptive filtering
         header[12] = 0;  // no interlace
         WriteChunk(png, "IHDR", header);
 
         // Each scanline is prefixed with its filter type. Filter 0 (none) keeps this simple;
-        // the colour ramps are quantized, so deflate already finds long runs.
+        // the color ramps are quantized, so deflate already finds long runs.
         var raw = new byte[height * ((width * 3) + 1)];
         int stride = (width * 3) + 1;
         for (int y = 0; y < height; y++)

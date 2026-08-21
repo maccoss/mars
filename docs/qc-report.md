@@ -65,7 +65,7 @@ cannot squash the informative part into a sliver.
 
 ## Error across retention time and fragment m/z
 
-Two panels after `calibrate`, before and after; one after `qc`. Colour is the **median**
+Two panels after `calibrate`, before and after; one after `qc`. Color is the **median**
 error in each cell - median, not mean, because a few mismatched peaks in a sparse cell
 would otherwise invent structure that is not there.
 
@@ -78,7 +78,7 @@ therefore correctable at all:
 
 - **Visible structure in the before panel** - bands, gradients, blocks - is systematic error.
   That is what MARS removes.
-- **A washed-out after panel** is the goal. Colour surviving in the same places means the
+- **A washed-out after panel** is the goal. Color surviving in the same places means the
   model did not capture that region.
 - **Structure along the m/z axis alone** is the classic mass-axis miscalibration.
 - **Structure along the time axis** is drift during acquisition.

@@ -145,6 +145,11 @@ public sealed class TrainingStatistics
 
     public ErrorSummary After { get; init; }
 
+    /// <summary>Before and after in ppm, or null when fragment m/z was not collected.</summary>
+    public ErrorSummary? BeforePpm { get; init; }
+
+    public ErrorSummary? AfterPpm { get; init; }
+
     /// <summary>Permutation importance per active feature, normalized to sum to 1.</summary>
     public double[] PermutationImportance { get; init; } = Array.Empty<double>();
 
@@ -328,6 +333,21 @@ public sealed class MzCalibrator
         int[] groupColumn = table.PeptideGroup.Items;
         for (int i = 0; i < rows.Length; i++) groupOfRow[i] = groupColumn[rows[i]];
 
+        // Per row, from that fragment's own m/z. Dividing an aggregate by a nominal mass
+        // would be wrong by however wide the cohort's m/z range is, which on a plasma
+        // digest is most of a factor of four.
+        double[]? ppmScale = null;
+        if (table.Has(MarsFeature.FragmentMz))
+        {
+            double[] fragmentMz = table.Column(MarsFeature.FragmentMz).Items;
+            ppmScale = new double[rows.Length];
+            for (int i = 0; i < rows.Length; i++)
+            {
+                double mz = fragmentMz[rows[i]];
+                ppmScale[i] = mz > 0 ? 1e6 / mz : 0.0;
+            }
+        }
+
         var gbtParams = new GbtParams
         {
             Objective = GbtObjective.SquaredError,
@@ -350,8 +370,8 @@ public sealed class MzCalibrator
         if (options.CvFolds >= 2)
         {
             return FitCrossValidated(
-                features, x, y, weights, groupOfRow, gbtParams, options, absoluteTimeOffset,
-                table.Count, log);
+                features, x, y, weights, groupOfRow, ppmScale, gbtParams, options,
+                absoluteTimeOffset, table.Count, log);
         }
 
         (int[] trainIndex, int[] validationIndex) =
@@ -374,7 +394,8 @@ public sealed class MzCalibrator
         }
 
         var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
-        TrainingStatistics statistics = calibrator.Evaluate(x, y, trainIndex, validationIndex, table.Count, options);
+        TrainingStatistics statistics = calibrator.Evaluate(
+            x, y, trainIndex, validationIndex, ppmScale, table.Count, options);
         return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics, null);
     }
 
@@ -397,8 +418,8 @@ public sealed class MzCalibrator
     /// </remarks>
     private static MzCalibrator FitCrossValidated(
         FeatureSet features, double[][] x, double[] y, double[]? weights, int[] groupOfRow,
-        GbtParams gbtParams, CalibrationOptions options, double absoluteTimeOffset,
-        int matchedRows, Action<string>? log)
+        double[]? ppmScale, GbtParams gbtParams, CalibrationOptions options,
+        double absoluteTimeOffset, int matchedRows, Action<string>? log)
     {
         (int[] foldOfRow, int groupCount) = PeptideFolds.AssignFolds(groupOfRow, options.CvFolds);
 
@@ -416,6 +437,7 @@ public sealed class MzCalibrator
 
         var models = new GradientBoostedTrees[options.CvFolds];
         var perFold = new FoldMetrics[options.CvFolds];
+        FoldMetrics[]? perFoldPpm = null;
         var outOfFold = new double[x.Length];
         int affectedTotal = 0;
 
@@ -452,6 +474,13 @@ public sealed class MzCalibrator
             }
 
             perFold[fold] = PeptideFolds.Measure(heldOutObserved, heldOutPredicted);
+            if (ppmScale is not null)
+            {
+                var heldOutScale = new double[heldOutIndex.Length];
+                for (int i = 0; i < heldOutIndex.Length; i++) heldOutScale[i] = ppmScale[heldOutIndex[i]];
+                (perFoldPpm ??= new FoldMetrics[options.CvFolds])[fold] =
+                    PeptideFolds.MeasurePpm(heldOutObserved, heldOutPredicted, heldOutScale);
+            }
             log?.Invoke(
                 $"  fold {fold + 1}/{options.CvFolds}: trained on {trainIndex.Length:N0}, " +
                 $"scored {heldOutIndex.Length:N0}, MAD {perFold[fold].Mad:F4} Th " +
@@ -497,6 +526,9 @@ public sealed class MzCalibrator
             PerFold = perFold,
             OutOfFold = PeptideFolds.Measure(y, outOfFold),
             InSample = PeptideFolds.Measure(y, inSample),
+            PerFoldPpm = perFoldPpm,
+            OutOfFoldPpm = ppmScale is null ? null : PeptideFolds.MeasurePpm(y, outOfFold, ppmScale),
+            InSamplePpm = ppmScale is null ? null : PeptideFolds.MeasurePpm(y, inSample, ppmScale),
         };
 
         log?.Invoke(
@@ -508,7 +540,7 @@ public sealed class MzCalibrator
             $"fold spread {report.MadSpread:F4} Th");
 
         TrainingStatistics statistics =
-            calibrator.EvaluateCrossValidated(x, y, inSample, matchedRows, report, options);
+            calibrator.EvaluateCrossValidated(x, y, inSample, ppmScale, matchedRows, report, options);
 
         return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics, report);
     }
@@ -749,7 +781,7 @@ public sealed class MzCalibrator
     /// and lives on <see cref="CrossValidationReport"/>. Both are reported, labelled.
     /// </remarks>
     private TrainingStatistics EvaluateCrossValidated(
-        double[][] x, double[] y, double[] inSample, int rowsMatched,
+        double[][] x, double[] y, double[] inSample, double[]? ppmScale, int rowsMatched,
         CrossValidationReport report, CalibrationOptions options)
     {
         var residual = new double[y.Length];
@@ -776,9 +808,18 @@ public sealed class MzCalibrator
             ValidationRmse = report.OutOfFold.Rms,
             Before = MarsStatistics.Summarize(y),
             After = MarsStatistics.Summarize(residual),
+            BeforePpm = ppmScale is null ? null : SummarizePpm(y, ppmScale),
+            AfterPpm = ppmScale is null ? null : SummarizePpm(residual, ppmScale),
             PermutationImportance = ComputePermutationImportance(x, y, options),
             SplitCount = ComputeSplitCounts(),
         };
+    }
+
+    private static ErrorSummary SummarizePpm(double[] values, double[] scale)
+    {
+        var ppm = new double[values.Length];
+        for (int i = 0; i < values.Length; i++) ppm[i] = values[i] * scale[i];
+        return MarsStatistics.Summarize(ppm);
     }
 
     private static double OutOfFoldMae(double[] y, CrossValidationReport report) =>
@@ -791,6 +832,7 @@ public sealed class MzCalibrator
         double[] y,
         int[] trainIndex,
         int[] validationIndex,
+        double[]? ppmScale,
         int rowsMatched,
         CalibrationOptions options)
     {

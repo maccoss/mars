@@ -50,6 +50,21 @@ public sealed class CrossValidationReport
     public required FoldMetrics OutOfFold { get; init; }
 
     /// <summary>
+    /// The same three measurements in ppm, or null when fragment m/z was not collected.
+    /// </summary>
+    /// <remarks>
+    /// A mass error of 0.0013 Th means something quite different at m/z 300 and at m/z 1200,
+    /// and on a high-resolution instrument ppm is the scale the error is actually specified
+    /// in. Converted per row from each fragment's own m/z rather than by dividing an
+    /// aggregate by a nominal mass, which would be wrong by however wide the m/z range is.
+    /// </remarks>
+    public FoldMetrics[]? PerFoldPpm { get; init; }
+
+    public FoldMetrics? OutOfFoldPpm { get; init; }
+
+    public FoldMetrics? InSamplePpm { get; init; }
+
+    /// <summary>
     /// The applied model scored on the rows it was fitted to. This is what the corrected
     /// files will look like when re-matched.
     /// </summary>
@@ -213,6 +228,24 @@ public static class PeptideFolds
         Array.Sort(trainArray);
         Array.Sort(validationArray);
         return (trainArray, validationArray);
+    }
+
+    /// <summary>
+    /// Rescales a Th observation and prediction into ppm, per row, then measures.
+    /// </summary>
+    /// <param name="scale">1e6 divided by each row's fragment m/z.</param>
+    public static FoldMetrics MeasurePpm(
+        ReadOnlySpan<double> observed, ReadOnlySpan<double> predicted, ReadOnlySpan<double> scale)
+    {
+        var observedPpm = new double[observed.Length];
+        var predictedPpm = new double[observed.Length];
+        for (int i = 0; i < observed.Length; i++)
+        {
+            observedPpm[i] = observed[i] * scale[i];
+            predictedPpm[i] = predicted[i] * scale[i];
+        }
+
+        return Measure(observedPpm, predictedPpm);
     }
 
     /// <summary>Accuracy of <paramref name="predicted"/> against <paramref name="observed"/>.</summary>

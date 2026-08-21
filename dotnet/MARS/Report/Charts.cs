@@ -62,53 +62,184 @@ public static class Charts
     }
 
     /// <summary>
-    /// Median mass error over retention time and fragment m/z. Structure here is what
-    /// tells you the error is systematic rather than random, and therefore correctable.
+    /// Median mass error over retention time and fragment m/z, before and after correction,
+    /// side by side on a shared color scale.
     /// </summary>
-    public static string ErrorHeatmap(
+    /// <remarks>
+    /// <para>
+    /// Side by side sharing one scale is the point: the question is whether the structure in
+    /// the left panel is gone from the right, and two panels scaled independently cannot
+    /// answer it - a faint residue would be stretched to look like the original.
+    /// </para>
+    /// <para>
+    /// The scale comes from the cell medians actually drawn, not from the raw per-row error.
+    /// A cell median over hundreds of rows is far tighter than the rows it averages, so
+    /// scaling it against the raw spread washes the field out to near-white, which is
+    /// exactly what an earlier version of this chart did.
+    /// </para>
+    /// </remarks>
+    public static string ErrorHeatmapPair(
         ReadOnlySpan<double> retentionTime, ReadOnlySpan<double> fragmentMz,
-        ReadOnlySpan<double> error, string unit, string title, int xBins = 60, int yBins = 44)
+        ReadOnlySpan<double> before, ReadOnlySpan<double> after, string unit,
+        int xBins = 44, int yBins = 36, int minimumPerCell = 8)
     {
-        var svg = new Svg(Width, Height);
-        if (error.Length == 0) return Empty(svg, "No matched fragments.");
+        const int height = 380;
+        var svg = new Svg(Width, height);
+        if (before.Length == 0) return Empty(svg, "No matched fragments.");
 
+        bool paired = after.Length == before.Length;
         (double rtMin, double rtMax) = Range(retentionTime);
         (double mzMin, double mzMax) = Range(fragmentMz);
-        var x = new Axis(rtMin, rtMax, Left, Width - Right);
-        var y = new Axis(mzMin, mzMax, Top, Height - Bottom, invert: true);
 
-        // Median per cell, not mean: a handful of mismatched peaks in a cell would drag a
-        // mean far enough to invent structure that is not there.
-        var cells = new List<double>[xBins * yBins];
-        for (int i = 0; i < error.Length; i++)
+        double?[] beforeCells = CellMedians(
+            retentionTime, fragmentMz, before, rtMin, rtMax, mzMin, mzMax, xBins, yBins, minimumPerCell);
+        double?[]? afterCells = paired
+            ? CellMedians(retentionTime, fragmentMz, after, rtMin, rtMax, mzMin, mzMax, xBins, yBins, minimumPerCell)
+            : null;
+
+        // One scale for both panels, taken from the uncorrected field so the corrected one is
+        // measured against it rather than against itself.
+        double scale = CellScale(beforeCells);
+
+        const int top = 46;
+        const int bottom = 58;
+        const int gap = 24;
+        const int barWidth = 52;
+        int panelWidth = paired
+            ? (Width - Left - Right - gap - barWidth) / 2
+            : Width - Left - Right - barWidth;
+        int panelHeight = height - top - bottom;
+
+        DrawPanel(svg, beforeCells, xBins, yBins, scale, Left, top, panelWidth, panelHeight,
+            rtMin, rtMax, mzMin, mzMax, paired ? "Before correction" : "As measured", showY: true);
+
+        if (paired)
         {
-            int cx = Bucket(retentionTime[i], rtMin, rtMax, xBins);
-            int cy = Bucket(fragmentMz[i], mzMin, mzMax, yBins);
-            if (cx < 0 || cy < 0) continue;
-            int index = (cy * xBins) + cx;
-            (cells[index] ??= new List<double>()).Add(error[i]);
+            DrawPanel(svg, afterCells!, xBins, yBins, scale, Left + panelWidth + gap, top,
+                panelWidth, panelHeight, rtMin, rtMax, mzMin, mzMax, "After correction", showY: false);
         }
 
-        double scale = SymmetricLimit(error, 0.98);
+        VerticalColorBar(svg, Width - Right - barWidth + 10, top, panelHeight, scale, unit);
+        svg.Text(13, top + (panelHeight / 2.0), "fragment m/z", anchor: "middle", size: 13, rotate: -90);
+        return svg.ToString();
+    }
+
+    /// <summary>Median of each cell, or null where too few rows landed in it.</summary>
+    /// <remarks>
+    /// A cell holding one or two rows has a median that is just those rows, so coloring it
+    /// scatters saturated noise across the field and hides the structure. Requiring a
+    /// handful leaves thin regions blank instead, which is honest.
+    /// </remarks>
+    private static double?[] CellMedians(
+        ReadOnlySpan<double> xValues, ReadOnlySpan<double> yValues, ReadOnlySpan<double> value,
+        double xLow, double xHigh, double yLow, double yHigh, int xBins, int yBins, int minimum)
+    {
+        var cells = new List<double>[xBins * yBins];
+        for (int i = 0; i < value.Length; i++)
+        {
+            int cx = Bucket(xValues[i], xLow, xHigh, xBins);
+            int cy = Bucket(yValues[i], yLow, yHigh, yBins);
+            if (cx < 0 || cy < 0) continue;
+            int index = (cy * xBins) + cx;
+            (cells[index] ??= new List<double>()).Add(value[i]);
+        }
+
+        var medians = new double?[cells.Length];
+        for (int i = 0; i < cells.Length; i++)
+        {
+            List<double>? rows = cells[i];
+            if (rows is null || rows.Count < minimum) continue;
+            rows.Sort();
+            medians[i] = rows[rows.Count / 2];
+        }
+
+        return medians;
+    }
+
+    private static double CellScale(double?[] cells)
+    {
+        var magnitudes = new List<double>();
+        foreach (double? cell in cells)
+        {
+            if (cell is double v) magnitudes.Add(Math.Abs(v));
+        }
+
+        if (magnitudes.Count == 0) return 1;
+        magnitudes.Sort();
+
+        // The 97th percentile of what is drawn. Lower than this and the ramp saturates on
+        // ordinary cells, so the cell-to-cell noise in a median reads as structure; much
+        // higher and the field washes out again.
+        double limit = magnitudes[Math.Min(magnitudes.Count - 1, (int)(magnitudes.Count * 0.97))];
+        return limit > 0 ? limit : 1;
+    }
+
+    private static void DrawPanel(
+        Svg svg, double?[] cells, int xBins, int yBins, double scale,
+        double left, double top, double width, double height,
+        double rtMin, double rtMax, double mzMin, double mzMax, string title, bool showY)
+    {
         var pixels = new byte[xBins * yBins * 3];
         FillBackground(pixels);
         for (int i = 0; i < cells.Length; i++)
         {
-            List<double>? values = cells[i];
-            if (values is null || values.Count == 0) continue;
-            values.Sort();
-            // The buffer is top-down; the grid counts up from the axis.
+            if (cells[i] is not double median) continue;
             int cy = i / xBins, cx = i % xBins;
-            SetPixel(pixels, xBins, cx, yBins - 1 - cy, Diverging(values[values.Count / 2], scale));
+            SetPixel(pixels, xBins, cx, yBins - 1 - cy, Diverging(median, scale));
         }
 
-        Raster(svg, pixels, xBins, yBins);
+        svg.Image(left, top, width, height, Png.DataUri(pixels, xBins, yBins));
+        svg.Rect(left, top, width, 1, Axis0);
+        svg.Rect(left, top + height, width, 1, Axis0);
+        svg.Rect(left, top, 1, height, Axis0);
+        svg.Rect(left + width, top, 1, height, Axis0);
+        svg.Text(left + (width / 2), top - 12, title, anchor: "middle", size: 14, bold: true);
 
-        Frame(svg, x, y, "retention time (min)", "fragment m/z", drawGrid: false);
-        svg.Text(Left, 20, title, size: 12, bold: true);
-        ColorBar(svg, scale, unit);
-        return svg.ToString();
+        var x = new Axis(rtMin, rtMax, left, left + width);
+        foreach (double tick in x.Ticks(5))
+        {
+            double px = x.Map(tick);
+            svg.Line(px, top + height, px, top + height + 4, Axis0, 1);
+            svg.Text(px, top + height + 16, x.Format(tick), anchor: "middle", size: 11, fill: Muted);
+        }
+
+        svg.Text(left + (width / 2), top + height + 34, "retention time (min)", anchor: "middle", size: 13);
+
+        if (!showY) return;
+        var y = new Axis(mzMin, mzMax, top, top + height, invert: true);
+        foreach (double tick in y.Ticks(5))
+        {
+            double py = y.Map(tick);
+            svg.Line(left - 4, py, left, py, Axis0, 1);
+            svg.Text(left - 7, py + 3.5, y.Format(tick), anchor: "end", size: 11, fill: Muted);
+        }
     }
+
+    private static void VerticalColorBar(
+        Svg svg, double x, double top, double height, double scale, string unit)
+    {
+        const int steps = 48;
+        double band = height / steps;
+        for (int i = 0; i < steps; i++)
+        {
+            double t = 1 - (2.0 * i / (steps - 1));
+            svg.Rect(x, top + (i * band), 13, band + 0.6, ColorOf(Diverging(t * scale, scale)));
+        }
+
+        svg.Rect(x, top, 13, 1, Axis0);
+        svg.Rect(x, top + height, 13, 1, Axis0);
+
+        string limit = scale.ToString(scale < 0.01 ? "0.####" : "0.###", CultureInfo.InvariantCulture);
+        svg.Text(x + 16, top + 8, "+" + limit, size: 10, fill: Muted);
+        svg.Text(x + 16, top + (height / 2) + 3, "0", size: 10, fill: Muted);
+        svg.Text(x + 16, top + height, "-" + limit, size: 10, fill: Muted);
+        svg.Text(x + 16, top + height + 15, unit, size: 10, fill: Muted);
+    }
+
+    private static string ColorOf((byte R, byte G, byte B) c) =>
+        "rgb(" + c.R.ToString(CultureInfo.InvariantCulture) + "," +
+        c.G.ToString(CultureInfo.InvariantCulture) + "," +
+        c.B.ToString(CultureInfo.InvariantCulture) + ")";
 
     /// <summary>
     /// Mass error against one feature, as a binned density with the median error per
@@ -179,7 +310,7 @@ public static class Charts
     public static string FoldSpread(
         IReadOnlyList<double> perFold, double pooled, double spread, string unit, string metric)
     {
-        const int height = 200;
+        const int height = 215;
         var svg = new Svg(Width, height);
         if (perFold.Count == 0) return Empty(svg, "No folds to show.");
 
@@ -233,18 +364,18 @@ public static class Charts
         {
             double px = x.Map(tick);
             svg.Line(px, axisY, px, axisY + 4, Axis0, 1);
-            svg.Text(px, axisY + 16, x.Format(tick), anchor: "middle", size: 10, fill: Muted);
+            svg.Text(px, axisY + 18, x.Format(tick), anchor: "middle", size: 12, fill: Muted);
         }
 
         svg.Line(Left, axisY, Width - Right, axisY, Axis0, 1);
-        svg.Text(Left, 22, $"{metric} per fold ({unit})", size: 12, bold: true);
+        svg.Text(Left, 22, $"{metric} per fold ({unit})", size: 14, bold: true);
         return svg.ToString();
     }
 
     public static string FeatureImportance(IReadOnlyList<string> names, IReadOnlyList<double> importance)
     {
         int rows = Math.Min(names.Count, importance.Count);
-        int height = Math.Max(180, 40 + (rows * 22));
+        int height = Math.Max(180, 40 + (rows * 24));
         var svg = new Svg(Width, height);
         if (rows == 0) return Empty(svg, "Importance was not computed.");
 
@@ -263,14 +394,14 @@ public static class Charts
         for (int i = 0; i < rows; i++)
         {
             int index = order[i];
-            double y = 26 + (i * 22);
-            svg.Text(labelWidth, y + 11, names[index], anchor: "end", size: 11);
+            double y = 26 + (i * 24);
+            svg.Text(labelWidth, y + 12, names[index], anchor: "end", size: 12);
             double barWidth = barSpan * (importance[index] / max);
             svg.Rect(barLeft, y + 2, barWidth, 14, After);
             svg.Text(
                 barLeft + barWidth + 6, y + 13,
                 importance[index].ToString("0.000", CultureInfo.InvariantCulture),
-                size: 10, fill: Muted);
+                size: 11, fill: Muted);
         }
 
         return svg.ToString();
@@ -290,20 +421,20 @@ public static class Charts
         {
             double py = y.Map(tick);
             if (drawGrid) svg.Line(Left, py, Width - Right, py, Grid, 1);
-            svg.Text(Left - 8, py + 3.5, y.Format(tick), anchor: "end", size: 10, fill: Muted);
+            svg.Text(Left - 8, py + 4, y.Format(tick), anchor: "end", size: 12, fill: Muted);
         }
 
         foreach (double tick in x.Ticks(7))
         {
             double px = x.Map(tick);
             if (drawGrid) svg.Line(px, Top, px, Height - Bottom, Grid, 1);
-            svg.Text(px, Height - Bottom + 15, x.Format(tick), anchor: "middle", size: 10, fill: Muted);
+            svg.Text(px, Height - Bottom + 17, x.Format(tick), anchor: "middle", size: 12, fill: Muted);
         }
 
         svg.Line(Left, Height - Bottom, Width - Right, Height - Bottom, Axis0, 1);
         svg.Line(Left, Top, Left, Height - Bottom, Axis0, 1);
-        svg.Text(Left + ((Width - Right - Left) / 2.0), Height - 8, xLabel, anchor: "middle", size: 11);
-        svg.Text(14, Top + ((Height - Bottom - Top) / 2.0), yLabel, anchor: "middle", size: 11, rotate: -90);
+        svg.Text(Left + ((Width - Right - Left) / 2.0), Height - 6, xLabel, anchor: "middle", size: 13);
+        svg.Text(14, Top + ((Height - Bottom - Top) / 2.0), yLabel, anchor: "middle", size: 13, rotate: -90);
     }
 
     private static void DrawBars(
@@ -352,11 +483,11 @@ public static class Charts
     private static void Legend(Svg svg, bool hasAfter, string beforeLabel = "before", string afterLabel = "after")
     {
         double x = Left + 4;
-        svg.Rect(x, 14, 10, 10, Before);
-        svg.Text(x + 15, 23, beforeLabel, size: 11);
+        svg.Rect(x, 13, 11, 11, Before);
+        svg.Text(x + 16, 23, beforeLabel, size: 12);
         if (!hasAfter) return;
-        svg.Rect(x + 90, 14, 10, 10, After);
-        svg.Text(x + 105, 23, afterLabel, size: 11);
+        svg.Rect(x + 110, 13, 11, 11, After);
+        svg.Text(x + 126, 23, afterLabel, size: 12);
     }
 
     private static void ColorBar(Svg svg, double scale, string unit)
@@ -384,7 +515,7 @@ public static class Charts
     /// </summary>
     /// <remarks>
     /// A near-white constant rather than the theme's background variable: this is a raster,
-    /// so it cannot follow the reader's colour scheme the way the vector layers do. The
+    /// so it cannot follow the reader's color scheme the way the vector layers do. The
     /// density ramps run light-to-dark, which reads correctly on either theme.
     /// </remarks>
     private static void FillBackground(byte[] pixels)
