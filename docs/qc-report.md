@@ -151,17 +151,26 @@ logs are worth using when you have them and not worth chasing when you do not.
 
 ## Error against each feature
 
-One panel per active feature. The background is a binned density of the measured error;
-the lines are the **median error per column** - two after `calibrate`, before and after
-correction, and one after `qc`.
+One figure per active feature, before and after correction side by side. Color is the
+**fragment count** per cell on a log scale - dark purple through green to yellow - and the
+line over it is the **median error per column**.
 
-Read the lines, not the cloud. The cloud is dominated by how many fragments happen to fall
-in each region; the median line is the trend the model has to capture.
+The count scale is viridis rather than a single-hue ramp because a monochrome ramp has one
+usable dimension and spends most of it on pale values, so the dense core and the sparse tail
+end up looking alike. Each panel is normalized to its own busiest cell: correcting
+concentrates the distribution, so on a shared scale the before panel would flatten to nearly
+empty and the structure that motivated the correction would vanish from the figure. Both
+panels do share one vertical range, because the after panel being visibly tighter is the
+result.
 
-- **A sloped or curved before-line** is a real dependence, and the model should be
-  flattening it.
-- **A flat after-line** means the model captured that dependence.
-- **An after-line that still slopes** is error the model left behind.
+Read the line first. The density shows where the fragments are, which is worth knowing -
+it says which part of the axis the trend is actually supported by - but the median line is
+the trend the model has to capture.
+
+- **A sloped or curved line in the left panel** is a real dependence, and the model should
+  be flattening it.
+- **A flat line in the right panel** means the model captured that dependence.
+- **A line that still slopes on the right** is error the model left behind.
 - **A flat before-line** means that feature carries no information about the error here, and
   should be near zero in the importance chart.
 

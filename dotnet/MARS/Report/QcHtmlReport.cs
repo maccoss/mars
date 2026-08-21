@@ -111,18 +111,20 @@ public static class QcHtmlReport
             Figure(html, "Feature importance",
                 "Permutation importance: how much the validation error degrades when one feature "
                 + "is shuffled. A feature near zero is carrying no weight and could be dropped.",
-                Charts.FeatureImportance(data.ImportanceNames, data.Importance));
+                Charts.FeatureImportance(PrettyNames(data.ImportanceNames), data.Importance));
         }
 
         if (data.Features.Count > 0)
         {
             html.Append("<h2>Error against each feature</h2>");
-            html.Append("<p class=\"note\">Binned density of the measured error, with the median "
-                      + "error per column drawn over it"
-                      + (corrected ? " before and after correction" : string.Empty)
+            html.Append("<p class=\"note\">Fragment count per cell, on a log scale, with the "
+                      + "median error per column drawn over it"
+                      + (corrected ? ", before and after correction side by side" : string.Empty)
                       + ". The trend line is the part to read: a sloped line is a real dependence"
                       + (corrected
-                          ? ", and a flat line after correction means the model captured it."
+                          ? ", and a flat line in the right panel means the model captured it. "
+                            + "Each panel is scaled to its own busiest cell, since correcting "
+                            + "concentrates the distribution."
                           : " that a model could exploit; a flat line means this feature says "
                             + "nothing about the error here.")
                       + "</p>");
@@ -130,8 +132,9 @@ public static class QcHtmlReport
 
         foreach ((string name, double[] values) in data.Features)
         {
-            Figure(html, name, null,
-                Charts.FeatureVersusError(values, data.ErrorBefore, data.ErrorAfter, name, "Th"));
+            Figure(html, Pretty(name), null,
+                Charts.FeatureVersusErrorPair(
+                    values, data.ErrorBefore, data.ErrorAfter, Pretty(name), "Th"));
         }
 
         html.Append("</main></body></html>");
@@ -377,6 +380,58 @@ public static class QcHtmlReport
 
     private static string Format(double value) =>
         double.IsNaN(value) ? "n/a" : value.ToString("0.0000", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Readable name for a feature, for titles and axis labels.
+    /// </summary>
+    /// <remarks>
+    /// The underscored names are the model's own vocabulary and stay that way everywhere they
+    /// are data - the model file, the CSV dumps, the parity comparison against the Python
+    /// implementation - because they are identifiers there and have to match exactly. This is
+    /// only what a reader sees.
+    /// </remarks>
+    private static string[] PrettyNames(IReadOnlyList<string> features)
+    {
+        var pretty = new string[features.Count];
+        for (int i = 0; i < features.Count; i++) pretty[i] = Pretty(features[i]);
+        return pretty;
+    }
+
+    private static string Pretty(string feature) => feature switch
+    {
+        "precursor_mz" => "precursor m/z",
+        "fragment_mz" => "fragment m/z",
+        "log_tic" => "log10 TIC",
+        "log_intensity" => "log10 peak intensity",
+        "absolute_time" => "acquisition time (s)",
+        "injection_time" => "injection time (s)",
+        "tic_injection_time" => "TIC x injection time",
+        "fragment_ions" => "fragment ions",
+        "rfa2_temp" => "RFA2 temperature",
+        "rfc2_temp" => "RFC2 temperature",
+        _ => PrettyWindow(feature),
+    };
+
+    /// <summary>
+    /// The space-charge features, whose names encode an m/z window: ions_above_1_2 counts the
+    /// ions between 1 and 2 Th above the fragment.
+    /// </summary>
+    private static string PrettyWindow(string feature)
+    {
+        string readable = feature.Replace('_', ' ');
+        (string Suffix, string Window)[] windows =
+        {
+            (" 0 1", " +0 to 1 Th"), (" 1 2", " +1 to 2 Th"), (" 2 3", " +2 to 3 Th"),
+        };
+
+        foreach ((string suffix, string window) in windows)
+        {
+            if (readable.EndsWith(suffix, StringComparison.Ordinal))
+                return readable[..^suffix.Length] + window;
+        }
+
+        return readable;
+    }
 
     private static void Figure(StringBuilder html, string? title, string? caption, string svg)
     {

@@ -164,7 +164,12 @@ public sealed class QcHtmlReportTest
             // One panel per feature, plus histogram, the heatmap pair and importance.
             int expected = data.Features.Count + 3;
             Assert.Equal(expected, Regex.Matches(html, "<svg ").Count);
-            Assert.Contains("log_intensity", html, StringComparison.Ordinal);
+
+            // Titles and axis labels are for reading, so the model's underscored identifier
+            // does not belong in them. It stays exact in the model file and the CSV dumps,
+            // where it is data rather than prose.
+            Assert.Contains("log10 peak intensity", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("log_intensity", html, StringComparison.Ordinal);
         }
         finally
         {

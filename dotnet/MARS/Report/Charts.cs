@@ -83,7 +83,7 @@ public static class Charts
         ReadOnlySpan<double> before, ReadOnlySpan<double> after, string unit,
         int xBins = 44, int yBins = 36, int minimumPerCell = 8)
     {
-        const int height = 380;
+        const int height = 400;
         var svg = new Svg(Width, height);
         if (before.Length == 0) return Empty(svg, "No matched fragments.");
 
@@ -102,7 +102,7 @@ public static class Charts
         double scale = CellScale(beforeCells);
 
         const int top = 46;
-        const int bottom = 58;
+        const int bottom = 64;
         const int gap = 24;
         const int barWidth = 52;
         int panelWidth = paired
@@ -120,7 +120,7 @@ public static class Charts
         }
 
         VerticalColorBar(svg, Width - Right - barWidth + 10, top, panelHeight, scale, unit);
-        svg.Text(13, top + (panelHeight / 2.0), "fragment m/z", anchor: "middle", size: 13, rotate: -90);
+        svg.Text(13, top + (panelHeight / 2.0), "fragment m/z", anchor: "middle", size: 15, rotate: -90);
         return svg.ToString();
     }
 
@@ -193,17 +193,17 @@ public static class Charts
         svg.Rect(left, top + height, width, 1, Axis0);
         svg.Rect(left, top, 1, height, Axis0);
         svg.Rect(left + width, top, 1, height, Axis0);
-        svg.Text(left + (width / 2), top - 12, title, anchor: "middle", size: 14, bold: true);
+        svg.Text(left + (width / 2), top - 12, title, anchor: "middle", size: 16, bold: true);
 
         var x = new Axis(rtMin, rtMax, left, left + width);
         foreach (double tick in x.Ticks(5))
         {
             double px = x.Map(tick);
             svg.Line(px, top + height, px, top + height + 4, Axis0, 1);
-            svg.Text(px, top + height + 16, x.Format(tick), anchor: "middle", size: 11, fill: Muted);
+            svg.Text(px, top + height + 16, x.Format(tick), anchor: "middle", size: 13, fill: Muted);
         }
 
-        svg.Text(left + (width / 2), top + height + 34, "retention time (min)", anchor: "middle", size: 13);
+        svg.Text(left + (width / 2), top + height + 34, "retention time (min)", anchor: "middle", size: 15);
 
         if (!showY) return;
         var y = new Axis(mzMin, mzMax, top, top + height, invert: true);
@@ -211,7 +211,7 @@ public static class Charts
         {
             double py = y.Map(tick);
             svg.Line(left - 4, py, left, py, Axis0, 1);
-            svg.Text(left - 7, py + 3.5, y.Format(tick), anchor: "end", size: 11, fill: Muted);
+            svg.Text(left - 7, py + 3.5, y.Format(tick), anchor: "end", size: 13, fill: Muted);
         }
     }
 
@@ -242,59 +242,229 @@ public static class Charts
         c.B.ToString(CultureInfo.InvariantCulture) + ")";
 
     /// <summary>
-    /// Mass error against one feature, as a binned density with the median error per
-    /// column drawn over it. The line is the part worth reading: it is the trend the model
-    /// has to capture.
+    /// Mass error against one feature as a density, before and after correction, side by
+    /// side.
     /// </summary>
-    public static string FeatureVersusError(
+    /// <remarks>
+    /// <para>
+    /// Colored by fragment count on a viridis ramp, which is what carries the information
+    /// here: a monochrome ramp has one usable dimension and spends most of it on pale
+    /// values, so the dense core and the sparse tail look much the same. Dark purple through
+    /// green to yellow separates two orders of magnitude legibly, and stays legible printed
+    /// in grayscale because it also rises monotonically in lightness.
+    /// </para>
+    /// <para>
+    /// Each panel is normalized to its own peak rather than to a shared one. Correcting
+    /// concentrates the distribution, so the after panel's peak is several times the before
+    /// panel's; on a shared scale the before panel would flatten to near-empty and the
+    /// structure that motivated the correction would disappear from the figure.
+    /// </para>
+    /// </remarks>
+    public static string FeatureVersusErrorPair(
         ReadOnlySpan<double> feature, ReadOnlySpan<double> before, ReadOnlySpan<double> after,
-        string featureName, string unit, int xBins = 90, int yBins = 60)
+        string featureName, string unit, int xBins = 72, int yBins = 56)
     {
-        var svg = new Svg(Width, Height);
+        const int height = 400;
+        var svg = new Svg(Width, height);
         if (feature.Length == 0) return Empty(svg, "No matched fragments.");
 
+        bool paired = after.Length == before.Length;
         double xLow = Percentile(feature, 0.002);
         double xHigh = Percentile(feature, 0.998);
+
+        // One vertical range for both panels: the after panel being visibly tighter is the
+        // result, and rescaling it away would hide exactly that.
         double limit = SymmetricLimit(before, 0.99);
-        var x = new Axis(xLow, xHigh, Left, Width - Right);
-        var y = new Axis(-limit, limit, Top, Height - Bottom, invert: true);
 
-        var counts = new int[xBins * yBins];
-        int densest = 0;
-        for (int i = 0; i < feature.Length; i++)
+        const int top = 46;
+        const int bottom = 64;
+        const int gap = 24;
+        const int barWidth = 58;
+        int panelWidth = paired
+            ? (Width - Left - Right - gap - barWidth) / 2
+            : Width - Left - Right - barWidth;
+        int panelHeight = height - top - bottom;
+
+        int beforePeak = DrawDensityPanel(
+            svg, feature, before, xLow, xHigh, limit, xBins, yBins,
+            Left, top, panelWidth, panelHeight, paired ? "Before correction" : "As measured",
+            featureName, showY: true, unit: unit);
+
+        int afterPeak = 0;
+        if (paired)
         {
-            int cx = Bucket(feature[i], xLow, xHigh, xBins);
-            int cy = Bucket(before[i], -limit, limit, yBins);
-            if (cx < 0 || cy < 0) continue;
-            int index = (cy * xBins) + cx;
-            densest = Math.Max(densest, ++counts[index]);
+            afterPeak = DrawDensityPanel(
+                svg, feature, after, xLow, xHigh, limit, xBins, yBins,
+                Left + panelWidth + gap, top, panelWidth, panelHeight, "After correction",
+                featureName, showY: false, unit: unit);
         }
 
-        var pixels = new byte[xBins * yBins * 3];
-        FillBackground(pixels);
-        for (int i = 0; i < counts.Length; i++)
-        {
-            if (counts[i] == 0) continue;
-            // Log scaling, because peak density in a scatter of this kind runs orders of
-            // magnitude above the tails and a linear ramp would show one dark blob.
-            int cy = i / xBins, cx = i % xBins;
-            SetPixel(pixels, xBins, cx, yBins - 1 - cy, Density(Math.Log(1 + counts[i]) / Math.Log(1 + densest)));
-        }
-
-        Raster(svg, pixels, xBins, yBins);
-
-        Frame(svg, x, y, featureName, $"mass error ({unit})", drawGrid: false);
-        svg.Line(Left, y.Map(0), Width - Right, y.Map(0), Axis0, 1, "3 3");
-
-        MedianTrend(svg, feature, before, x, y, xLow, xHigh, xBins, Before);
-        if (after.Length == before.Length)
-            MedianTrend(svg, feature, after, x, y, xLow, xHigh, xBins, After);
-
-        Legend(svg, after.Length == before.Length, "median before", "median after");
+        ViridisBar(svg, Width - Right - barWidth + 10, top, panelHeight, beforePeak, afterPeak, paired);
         return svg.ToString();
     }
 
-    /// <summary>Permutation importance per feature, largest first.</summary>
+    /// <summary>Draws one density panel and returns the count in its busiest cell.</summary>
+    private static int DrawDensityPanel(
+        Svg svg, ReadOnlySpan<double> feature, ReadOnlySpan<double> error,
+        double xLow, double xHigh, double limit, int xBins, int yBins,
+        double left, double top, double width, double height,
+        string title, string featureName, bool showY, string unit)
+    {
+        var counts = new int[xBins * yBins];
+        int peak = 0;
+        for (int i = 0; i < feature.Length; i++)
+        {
+            int cx = Bucket(feature[i], xLow, xHigh, xBins);
+            int cy = Bucket(error[i], -limit, limit, yBins);
+            if (cx < 0 || cy < 0) continue;
+            peak = Math.Max(peak, ++counts[(cy * xBins) + cx]);
+        }
+
+        var pixels = new byte[xBins * yBins * 3];
+        for (int i = 0; i < pixels.Length; i += 3)
+        {
+            // Empty stays white, as in the reference figures: an empty cell is an absence of
+            // data, not the low end of a density.
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+        }
+
+        double logPeak = Math.Log(1 + peak);
+        for (int i = 0; i < counts.Length; i++)
+        {
+            if (counts[i] == 0) continue;
+
+            // Log, because the peak of a density like this runs orders of magnitude above the
+            // tails and a linear ramp would show one bright dot in a dark field.
+            double t = logPeak > 0 ? Math.Log(1 + counts[i]) / logPeak : 0;
+            int cy = i / xBins, cx = i % xBins;
+            SetPixel(pixels, xBins, cx, yBins - 1 - cy, Viridis(t));
+        }
+
+        svg.Image(left, top, width, height, Png.DataUri(pixels, xBins, yBins));
+        svg.Rect(left, top, width, 1, Axis0);
+        svg.Rect(left, top + height, width, 1, Axis0);
+        svg.Rect(left, top, 1, height, Axis0);
+        svg.Rect(left + width, top, 1, height, Axis0);
+        svg.Text(left + (width / 2), top - 12, title, anchor: "middle", size: 16, bold: true);
+
+        var y = new Axis(-limit, limit, top, top + height, invert: true);
+        var x = new Axis(xLow, xHigh, left, left + width);
+        svg.Line(left, y.Map(0), left + width, y.Map(0), "#ffffff", 1.2, "4 3");
+        MedianTrend(svg, feature, error, x, y, xLow, xHigh, xBins, left, left + width);
+
+        foreach (double tick in x.Ticks(4))
+        {
+            double px = x.Map(tick);
+            svg.Line(px, top + height, px, top + height + 4, Axis0, 1);
+            svg.Text(px, top + height + 16, x.Format(tick), anchor: "middle", size: 13, fill: Muted);
+        }
+
+        svg.Text(left + (width / 2), top + height + 34, featureName, anchor: "middle", size: 15);
+
+        if (showY)
+        {
+            foreach (double tick in y.Ticks(5))
+            {
+                double py = y.Map(tick);
+                svg.Line(left - 4, py, left, py, Axis0, 1);
+                svg.Text(left - 7, py + 4, y.Format(tick), anchor: "end", size: 13, fill: Muted);
+            }
+
+            svg.Text(13, top + (height / 2), $"mass error ({unit})", anchor: "middle", size: 15, rotate: -90);
+        }
+
+        return peak;
+    }
+
+    /// <summary>
+    /// Median error per column, drawn over the density.
+    /// </summary>
+    /// <remarks>
+    /// Cased - a dark stroke under a white one - because viridis runs from near-black to
+    /// near-yellow and no single color reads against both ends of it.
+    /// </remarks>
+    private static void MedianTrend(
+        Svg svg, ReadOnlySpan<double> feature, ReadOnlySpan<double> error,
+        Axis x, Axis y, double low, double high, int bins, double clipLeft, double clipRight)
+    {
+        var buckets = new List<double>[bins];
+        for (int i = 0; i < feature.Length; i++)
+        {
+            int b = Bucket(feature[i], low, high, bins);
+            if (b < 0) continue;
+            (buckets[b] ??= new List<double>()).Add(error[i]);
+        }
+
+        var points = new List<(double X, double Y)>();
+        double step = (high - low) / bins;
+        for (int b = 0; b < bins; b++)
+        {
+            List<double>? values = buckets[b];
+            // A column of a handful of rows is noise, and a trend line through noise reads as
+            // signal.
+            if (values is null || values.Count < 20) continue;
+            values.Sort();
+            double px = x.Map(low + ((b + 0.5) * step));
+            if (px < clipLeft || px > clipRight) continue;
+            points.Add((px, y.Map(values[values.Count / 2])));
+        }
+
+        var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(points);
+        svg.Polyline(span, "#1a1d21", 3.2);
+        svg.Polyline(span, "#ffffff", 1.6);
+    }
+
+    private static void ViridisBar(
+        Svg svg, double x, double top, double height, int beforePeak, int afterPeak, bool paired)
+    {
+        const int steps = 48;
+        double band = height / steps;
+        for (int i = 0; i < steps; i++)
+        {
+            double t = 1 - ((double)i / (steps - 1));
+            svg.Rect(x, top + (i * band), 13, band + 0.6, ColorOf(Viridis(t)));
+        }
+
+        svg.Rect(x, top, 13, 1, Axis0);
+        svg.Rect(x, top + height, 13, 1, Axis0);
+        svg.Text(x + 16, top + 8, "peak", size: 10, fill: Muted);
+        svg.Text(x + 16, top + height, "0", size: 10, fill: Muted);
+        svg.Text(x + 16, top + height + 15, "fragments", size: 10, fill: Muted);
+
+        string peaks = paired
+            ? $"peak {beforePeak:N0} / {afterPeak:N0}"
+            : $"peak {beforePeak:N0}";
+        svg.Text(x + 16, top + height + 29, peaks, size: 9, fill: Muted);
+    }
+
+    /// <summary>
+    /// The viridis ramp, interpolated between its usual anchors.
+    /// </summary>
+    /// <remarks>
+    /// Chosen for the reason it is usually chosen: it is perceptually near-uniform, so equal
+    /// steps in density look like equal steps in color, and it rises monotonically in
+    /// lightness so it survives being printed in grayscale.
+    /// </remarks>
+    private static (byte R, byte G, byte B) Viridis(double t)
+    {
+        (double R, double G, double B)[] anchors =
+        {
+            (68, 1, 84), (72, 40, 120), (62, 74, 137), (49, 104, 142), (38, 130, 142),
+            (31, 158, 137), (53, 183, 121), (109, 205, 89), (180, 222, 44), (253, 231, 37),
+        };
+
+        double clamped = Math.Clamp(t, 0, 1) * (anchors.Length - 1);
+        int i = Math.Min((int)clamped, anchors.Length - 2);
+        double f = clamped - i;
+
+        return (
+            (byte)Math.Round(anchors[i].R + ((anchors[i + 1].R - anchors[i].R) * f)),
+            (byte)Math.Round(anchors[i].G + ((anchors[i + 1].G - anchors[i].G) * f)),
+            (byte)Math.Round(anchors[i].B + ((anchors[i + 1].B - anchors[i].B) * f)));
+    }
+
     /// <summary>
     /// Each fold's accuracy against the pooled figure, with a band at one standard
     /// deviation either side of the fold mean.
@@ -364,18 +534,18 @@ public static class Charts
         {
             double px = x.Map(tick);
             svg.Line(px, axisY, px, axisY + 4, Axis0, 1);
-            svg.Text(px, axisY + 18, x.Format(tick), anchor: "middle", size: 12, fill: Muted);
+            svg.Text(px, axisY + 18, x.Format(tick), anchor: "middle", size: 13, fill: Muted);
         }
 
         svg.Line(Left, axisY, Width - Right, axisY, Axis0, 1);
-        svg.Text(Left, 22, $"{metric} per fold ({unit})", size: 14, bold: true);
+        svg.Text(Left, 22, $"{metric} per fold ({unit})", size: 16, bold: true);
         return svg.ToString();
     }
 
     public static string FeatureImportance(IReadOnlyList<string> names, IReadOnlyList<double> importance)
     {
         int rows = Math.Min(names.Count, importance.Count);
-        int height = Math.Max(180, 40 + (rows * 24));
+        int height = Math.Max(190, 44 + (rows * 26));
         var svg = new Svg(Width, height);
         if (rows == 0) return Empty(svg, "Importance was not computed.");
 
@@ -387,15 +557,15 @@ public static class Charts
         foreach (double value in importance) max = Math.Max(max, value);
         if (max <= 0) max = 1;
 
-        const int labelWidth = 190;
+        const int labelWidth = 230;
         double barLeft = labelWidth + 10;
         double barSpan = Width - barLeft - 60;
 
         for (int i = 0; i < rows; i++)
         {
             int index = order[i];
-            double y = 26 + (i * 24);
-            svg.Text(labelWidth, y + 12, names[index], anchor: "end", size: 12);
+            double y = 28 + (i * 26);
+            svg.Text(labelWidth, y + 13, names[index], anchor: "end", size: 13);
             double barWidth = barSpan * (importance[index] / max);
             svg.Rect(barLeft, y + 2, barWidth, 14, After);
             svg.Text(
@@ -421,20 +591,20 @@ public static class Charts
         {
             double py = y.Map(tick);
             if (drawGrid) svg.Line(Left, py, Width - Right, py, Grid, 1);
-            svg.Text(Left - 8, py + 4, y.Format(tick), anchor: "end", size: 12, fill: Muted);
+            svg.Text(Left - 8, py + 4, y.Format(tick), anchor: "end", size: 13, fill: Muted);
         }
 
         foreach (double tick in x.Ticks(7))
         {
             double px = x.Map(tick);
             if (drawGrid) svg.Line(px, Top, px, Height - Bottom, Grid, 1);
-            svg.Text(px, Height - Bottom + 17, x.Format(tick), anchor: "middle", size: 12, fill: Muted);
+            svg.Text(px, Height - Bottom + 17, x.Format(tick), anchor: "middle", size: 13, fill: Muted);
         }
 
         svg.Line(Left, Height - Bottom, Width - Right, Height - Bottom, Axis0, 1);
         svg.Line(Left, Top, Left, Height - Bottom, Axis0, 1);
-        svg.Text(Left + ((Width - Right - Left) / 2.0), Height - 6, xLabel, anchor: "middle", size: 13);
-        svg.Text(14, Top + ((Height - Bottom - Top) / 2.0), yLabel, anchor: "middle", size: 13, rotate: -90);
+        svg.Text(Left + ((Width - Right - Left) / 2.0), Height - 6, xLabel, anchor: "middle", size: 15);
+        svg.Text(14, Top + ((Height - Bottom - Top) / 2.0), yLabel, anchor: "middle", size: 15, rotate: -90);
     }
 
     private static void DrawBars(
@@ -484,10 +654,10 @@ public static class Charts
     {
         double x = Left + 4;
         svg.Rect(x, 13, 11, 11, Before);
-        svg.Text(x + 16, 23, beforeLabel, size: 12);
+        svg.Text(x + 17, 24, beforeLabel, size: 13);
         if (!hasAfter) return;
         svg.Rect(x + 110, 13, 11, 11, After);
-        svg.Text(x + 126, 23, afterLabel, size: 12);
+        svg.Text(x + 130, 24, afterLabel, size: 13);
     }
 
     private static void ColorBar(Svg svg, double scale, string unit)
