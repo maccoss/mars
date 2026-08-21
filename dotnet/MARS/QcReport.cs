@@ -40,7 +40,9 @@ public static class QcReport
         AppendSummary(text, stats.Before);
         text.AppendLine();
 
-        text.AppendLine("After Calibration:");
+        text.AppendLine(calibrator.CrossValidation is null
+            ? "After Calibration:"
+            : "After Calibration (these files, corrected):");
         AppendSummary(text, stats.After);
         text.AppendLine();
 
@@ -48,6 +50,17 @@ public static class QcReport
         text.AppendLine($"             {Reduction(stats.Before.Mad, stats.After.Mad):F1}% reduction in MAD");
         text.AppendLine($"             {Reduction(stats.Before.Rms, stats.After.Rms):F1}% reduction in RMS");
         text.AppendLine();
+
+        if (calibrator.CrossValidation is CrossValidationReport estimate)
+        {
+            // The two numbers answer different questions and a reader deserves both. The
+            // figures above describe these files. This one describes what the same procedure
+            // would achieve on a run it was not fitted to, which is what `mars apply` does.
+            text.AppendLine(
+                $"Expected on data not used to fit: MAD {estimate.OutOfFold.Mad:F4} Th " +
+                $"({estimate.OutOfFold.MadReduction:F1}% reduction), from cross-validation below.");
+        }
+
         text.AppendLine();
 
         if (calibrator.CrossValidation is CrossValidationReport cv)
@@ -73,11 +86,13 @@ public static class QcReport
                 $"  spread across folds: MAD {cv.MadSpread:F4} Th, RMS {cv.RmsSpread:F4} Th, " +
                 $"r {cv.PearsonRSpread:F4}");
             text.AppendLine(
-                $"  in-sample MAD {cv.InSample.Mad:F4} Th; optimism {cv.OptimismMad:F4} Th " +
-                $"({OptimismVerdict(cv)})");
+                $"  on this data: MAD {cv.InSample.Mad:F4} Th; gap to the estimate above " +
+                $"{cv.OptimismMad:F4} Th ({OptimismVerdict(cv)})");
             text.AppendLine();
-            text.AppendLine("  Every row above was scored by a model that never saw its peptide.");
-            text.AppendLine("  The before/after figures at the top use these out-of-fold predictions.");
+            text.AppendLine("  Every row above was scored by a model that never saw its peptide,");
+            text.AppendLine("  so this is the estimate for a run the model was not fitted to.");
+            text.AppendLine("  The figures at the top of this report describe THESE files, which the");
+            text.AppendLine("  applied model was fitted to - as mass calibration normally is.");
             text.AppendLine($"  {DescribeSpread(cv)}");
             text.AppendLine();
             text.AppendLine();
@@ -89,18 +104,20 @@ public static class QcReport
         text.AppendLine($"Training samples:  {stats.RowsUsed:N0}");
         text.AppendLine(calibrator.CrossValidation is null
             ? $"Train/Val split:   {stats.RowsTrain:N0} / {stats.RowsValidation:N0}"
-            : $"Model:             {calibrator.CrossValidation.Folds} fold models merged into one");
+            : $"Model:             fitted on all {stats.RowsUsed:N0} rows; " +
+              $"{calibrator.CrossValidation.Folds}-fold cross-validation run alongside");
         text.AppendLine($"Spectra examined:  {matchStatistics.SpectraSeen:N0}");
         text.AppendLine($"Library precursors matched: {matchStatistics.UniqueEntriesMatched:N0}");
         text.AppendLine();
 
         text.AppendLine("Model performance:");
-        text.AppendLine($"  Train MAE:  {stats.TrainMae:F4} Th");
-        text.AppendLine($"  Train RMSE: {stats.TrainRmse:F4} Th");
+        bool crossValidated = calibrator.CrossValidation is not null;
+        text.AppendLine($"  {(crossValidated ? "On this data MAE: " : "Train MAE:  ")}{stats.TrainMae:F4} Th");
+        text.AppendLine($"  {(crossValidated ? "On this data RMSE:" : "Train RMSE: ")}{stats.TrainRmse:F4} Th");
         if (stats.RowsValidation > 0)
         {
-            text.AppendLine($"  Val MAE:    {stats.ValidationMae:F4} Th");
-            text.AppendLine($"  Val RMSE:   {stats.ValidationRmse:F4} Th");
+            text.AppendLine($"  {(crossValidated ? "Out-of-fold MAD:  " : "Val MAE:    ")}{stats.ValidationMae:F4} Th");
+            text.AppendLine($"  {(crossValidated ? "Out-of-fold RMSE: " : "Val RMSE:   ")}{stats.ValidationRmse:F4} Th");
         }
 
         text.AppendLine();
@@ -167,10 +184,10 @@ public static class QcReport
         double relative = cv.OptimismMad / cv.OutOfFold.Mad;
         return relative switch
         {
-            < 0.05 => "negligible; the model generalizes to unseen peptides",
+            < 0.05 => "negligible; the fit is driven by the instrument, not these peptides",
             < 0.15 => "modest",
-            < 0.30 => "substantial: the model is partly memorizing peptides",
-            _ => "large: treat the in-sample figure as meaningless",
+            < 0.30 => "substantial: the fit leans on the particular peptides in this run",
+            _ => "large: the fit is thin, and reusing this model elsewhere would disappoint",
         };
     }
 

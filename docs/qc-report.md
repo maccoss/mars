@@ -7,7 +7,7 @@ Both `mars qc` and `mars calibrate` write two reports:
 
 `qc` runs before any model exists, so its report shows the error **as measured** and how it
 varies with each feature. `calibrate` shows the same figures with an after-correction
-overlay, plus an after-heatmap and feature importance. Everything below applies to both;
+overlay, plus an after-heatmap, feature importance and cross-validation. Everything below applies to both;
 where they differ it says so.
 
 The HTML file has no scripts, no external references, and fetches nothing when opened.
@@ -117,13 +117,22 @@ which is how much of the error's structure the model tracks. They can disagree, 
 informative when they do - a fold with a good MAD but a poor r is one where there was little
 error to find rather than one the model handled well.
 
-Then read **optimism**: how much better the model looks on rows it was built from than on
-peptides it had not seen. A small gap means the model is generalizing. A large one means it
-is partly memorizing individual peptides, and no in-sample figure from that run is worth
-quoting.
+Then read the **gap**: the difference between what the correction leaves on the data it was
+fitted to and what it leaves on peptides it never saw.
 
-Every before/after number elsewhere in the report uses the out-of-fold predictions, so
-there is no optimistic figure hiding in the summary.
+This is not a measure of cheating. The correction model is fitted to all the data on
+purpose - calibrating a run from species identified within it is what mass calibration is -
+and the correction moves a peak onto a fitted surface rather than onto its theoretical m/z,
+so there is little scope to memorize individual peaks. What a large gap does say is that the
+surface is being driven by the particular peptides in this run rather than by the
+instrument: the fit is thin, and `mars apply` would disappoint on other files.
+
+Both numbers appear at the top of the report:
+
+- **After Calibration (these files, corrected)** - what the corrected output will look like
+  when re-matched. This is the one to quote for the run in hand.
+- **Expected on data not used to fit** - what the same procedure achieves on a run it was
+  not fitted to. This is the one to quote for `mars apply`.
 
 ## Feature importance
 

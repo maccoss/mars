@@ -49,7 +49,10 @@ public sealed class CrossValidationReport
     /// </summary>
     public required FoldMetrics OutOfFold { get; init; }
 
-    /// <summary>Metrics of the ensemble scored on the rows it was trained on.</summary>
+    /// <summary>
+    /// The applied model scored on the rows it was fitted to. This is what the corrected
+    /// files will look like when re-matched.
+    /// </summary>
     public required FoldMetrics InSample { get; init; }
 
     /// <summary>Standard deviation across folds of the per-fold MAD.</summary>
@@ -62,10 +65,17 @@ public sealed class CrossValidationReport
     public double MadReductionSpread => Spread(static m => m.MadReduction);
 
     /// <summary>
-    /// How much better the model looks on rows it trained on than on rows it did not. A
-    /// large gap is overfitting, and it is the number that says whether to believe the
-    /// in-sample figure at all.
+    /// How much better the correction is on the data it was fitted to than on data it was
+    /// not.
     /// </summary>
+    /// <remarks>
+    /// Not a measure of cheating: calibrating a run from its own identified species is
+    /// exactly how mass calibration works, and the correction moves a peak onto a fitted
+    /// surface rather than onto its theoretical m/z, so there is little scope to memorize
+    /// individual peaks. What a large gap does mean is that the surface is being driven by
+    /// the particular peptides in this run rather than by the instrument, which says the fit
+    /// is thin and that reusing this model elsewhere would disappoint.
+    /// </remarks>
     public double OptimismMad => OutOfFold.Mad - InSample.Mad;
 
     private double Spread(Func<FoldMetrics, double> select)

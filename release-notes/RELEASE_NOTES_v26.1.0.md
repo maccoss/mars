@@ -73,18 +73,26 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   with the same theoretical m/z, and `fragment_mz` is a feature: splitting rows rather than
   peptides lets the model memorize a peptide's error and report an accuracy it cannot reach
   on anything new. The report gives per-fold figures, the pooled out-of-fold figure, the
-  spread across folds, and the gap between in-sample and out-of-fold accuracy. On the
-  reference Stellar run that gap is 0.0015 Th, about 3% of the error being corrected, so the
-  model generalizes rather than memorizes. `--cv-folds 0` restores a single fit; the held-out
-  split in that mode is now also by peptide.
-- **The fold models are merged into a single model**, which predicts exactly what averaging
-  them would. A boosted ensemble's score is linear in its trees, so keeping every tree and
-  dividing each leaf value by the fold count reproduces the average to the last bit - not an
-  approximation, and not a refit on data that was held out. What ships is the ensemble that
-  was measured, written as one object. It carries five times the trees, so correcting is
-  about five times slower than a single fit: 266 s against 52 s on one 1.47 GB file, of
-  which only 16 s is the extra training. `--cv-folds 0` trains a single model instead, at
-  the cost of an in-sample accuracy figure rather than an honest one.
+  spread across folds, and the gap between the two. On the reference Stellar run that gap is
+  0.0014 Th, about 3% of the error being corrected, so the fit is describing the instrument
+  rather than the particular peptides in the run; on a data-poor window of the same cohort it
+  is 20%, which is a real warning that the fit is thin. `--cv-folds 0` skips cross-validation
+  and reports only the in-sample figure; the held-out split in that mode is also by peptide.
+- **The correction model is fitted to all the data, and the report gives two numbers.**
+  Calibration is in-sample by nature - it is what mass calibration has always been, measuring
+  known species present in the run and correcting the axis from them - and the correction
+  moves a peak onto a fitted surface rather than onto its theoretical m/z, so there is little
+  scope to memorize individual peaks. The report therefore states both what the correction
+  achieved on these files and what cross-validation says it would achieve on a run it was not
+  fitted to, labelled:
+
+  ```
+  After Calibration (these files, corrected):   MAD 0.0431 Th
+  Expected on data not used to fit:             MAD 0.0445 Th
+  ```
+
+  Cross-validation costs a few extra training rounds and nothing at correction time: 66 s
+  against 52 s for `--cv-folds 0`, on one 1.47 GB file.
 - **The QC report shows how much the folds disagree.** A per-fold table with a spread
   row, two figures plotting each fold's accuracy against the pooled figure with a
   one-standard-deviation band, and a plain-language reading of both the spread and the

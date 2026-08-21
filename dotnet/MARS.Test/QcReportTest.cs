@@ -218,7 +218,10 @@ public sealed class QcHtmlReportTest
             Assert.Contains("+/-", html, StringComparison.Ordinal);
             Assert.Contains("Median absolute residual per fold", html, StringComparison.Ordinal);
             Assert.Contains("Pearson correlation per fold", html, StringComparison.Ordinal);
-            Assert.Contains("Optimism", html, StringComparison.Ordinal);
+            // The gap between what the correction achieves on the data it was fitted to and
+            // what it would achieve elsewhere. Named "gap" rather than "optimism" because
+            // calibrating a run from its own species is not cheating - see qc-report.md.
+            Assert.Contains("Gap ", html, StringComparison.Ordinal);
 
             // Histogram, two heatmaps, importance, two fold-spread figures, one per feature.
             Assert.Equal(withCv.Features.Count + 6, Regex.Matches(html, "<svg ").Count);

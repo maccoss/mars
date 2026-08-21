@@ -205,70 +205,68 @@ seed is involved, so the split is reproducible from the input alone, and every f
 equal number of peptides. This follows Osprey's Percolator implementation, which splits its
 folds the same way (`PercolatorSampling.CreateStratifiedFoldsByPeptide`).
 
-### What gets applied: the folds merged into one model
+### Calibration is in-sample, and that is not a problem
 
-Cross-validation produces five models, and something has to be written to
-`mars_model.json`. MARS merges them into **one** model that predicts exactly what averaging
-them would.
+The model that corrects the data is fitted to **all** of it. Nothing is held back.
 
-That is possible because a boosted ensemble's score is linear in its trees:
+That deserves stating plainly, because "trained on the data it is applied to" sounds like a
+mistake. It is not. It is what mass calibration has always been: you measure species whose
+masses you know in the run in front of you, and you correct the axis from them. Nobody
+holds out half their lock masses.
+
+Two properties keep it honest:
+
+- **The correction moves a peak onto a fitted surface, not onto its theoretical m/z.** The
+  model never sees peptide identity, and it predicts from about twenty spectral features
+  over hundreds of thousands of rows. A hundred trees of depth six has nowhere near the
+  capacity to store a per-peak correction even if it wanted to.
+- **The residual is measured, not assumed.** On the reference Stellar run the fit leaves
+  0.0431 Th on the data it was fitted to and 0.0445 Th on peptides it never saw - a gap of
+  0.0014 Th, 3% of the error being corrected. If the model were memorizing, that gap would
+  be wide.
+
+So the cross-validation is not there to catch cheating. It answers different questions.
+
+### What cross-validation is for here
+
+1. **Is the structure real?** If the out-of-fold figure is close to the in-sample one, the
+   surface describes the instrument rather than the particular peptides that happened to be
+   identified. If it is far off, the fit is thin.
+2. **What will `mars apply` achieve?** Reusing a model on other files genuinely is
+   out-of-sample, and the out-of-fold figure is the honest estimate for it.
+3. **Is there enough data?** The reference cohort's 400-500 window has 14,432 matches over
+   about 300 peptides and reports a gap of 0.0100 Th against a corrected error of 0.0523 Th
+   - roughly 20%. The 600-700 window, with ten times the matches, reports 3%. Same tool,
+   same settings, honestly different answers.
+
+Both numbers appear in the report, labelled:
 
 ```
-score(x) = baseScore + sum over trees of leaf(traverse(tree, x))
+After Calibration (these files, corrected):   MAD 0.0431 Th
+Expected on data not used to fit:             MAD 0.0445 Th
 ```
 
-so the average over K models rearranges into a single model:
+The first is what the corrected files will look like when re-matched. The second is what to
+expect from `mars apply` elsewhere. Quoting only the first would overstate transferability;
+quoting only the second would understate what the correction actually did.
 
-```
-(1/K) * sum_k [ base_k + sum_i tree_ki(x) ]
-    = mean(base_k) + sum over ALL trees of ( tree(x) / K )
-```
+### What it costs
 
-Keep every tree from every fold, divide each leaf value by K, average the base scores. Not
-an approximation - the predictions are identical to the last bit, and a test checks that
-over 300 random feature vectors on fold models trained to deliberately disagree.
+One extra training round per fold, and nothing at correction time, because the applied
+model is an ordinary single fit:
 
-**This is not a refit.** No model is trained on data that was held out from it and then
-quietly promoted. The object that ships is the ensemble that was measured, written as one
-model.
-
-#### Is averaging trees sound?
-
-It is the same operation random forests are built on, and the reason it is safe is worth
-being precise about: **MARS averages functions, not parameters.**
-
-Averaging *parameters* of non-linear models can produce nonsense - the midpoint of two
-neural networks' weights is generally not a working network, and the midpoint of two trees'
-split thresholds is not a meaningful tree. Averaging *outputs* cannot. For squared error the
-ambiguity decomposition gives
-
-```
-error(ensemble) = mean(error of members) - disagreement among members
-```
-
-with the second term never negative. The average is never worse than the average member,
-and the more the members disagree the bigger the gain. Three very different tree solutions
-therefore cannot average into something that fails; disagreement is what makes averaging
-worth doing.
-
-The merge implements output averaging exactly, by scaling leaf contributions. It never
-merges tree structures or averages thresholds, which is the operation that would break.
-
-#### What it costs
-
-Merging buys one model object, one scoring path and a simpler file. It does **not** buy
-back time:
-
-| | |
+| | one 1.47 GB Stellar file |
 |---|---|
-| single fit, 100 trees | 52 s on a 1.47 GB Stellar file |
-| 5 folds merged, 500 trees | 266 s on the same file |
+| `--cv-folds 0` | 52 s |
+| `--cv-folds 5` (default) | 66 s |
 
-Scoring cost is the number of trees traversed, and the trees add up. This is the one place
-the tree case is genuinely worse than Percolator's linear one: averaging K weight vectors
-gives another vector of the same size, so applying it is free, whereas averaging K tree
-ensembles gives K times the trees. `--cv-folds 0` trains a single model if that trade is
-not worth it, at the cost of an in-sample accuracy figure rather than an honest one.
+An earlier design applied the fold models as an ensemble, so that the object shipped was
+literally the object measured. That is what Osprey's Percolator does, and it is exact for
+trees as well as for linear models - a boosted ensemble's score is linear in its trees, so
+keeping every tree and dividing each leaf by K reproduces the average of K models to the
+last bit. It was dropped because it makes correction five times slower for no benefit here:
+the ensemble's members each saw four fifths of the peptides, and if in-sample calibration is
+legitimate then the best surface to calibrate with is the one fitted to everything.
 
 ### What it reports
 

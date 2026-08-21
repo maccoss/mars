@@ -130,10 +130,13 @@ public sealed class MzCalibrator
     public FeatureSet Features { get; }
 
     /// <summary>
-    /// The model. After cross-validation this is the fold models merged into one - not a
-    /// sixth model refitted on everything, but the same ensemble expressed as a single
-    /// object, predicting identically. See <see cref="EnsembleMerge"/>.
+    /// The model that corrects the data, fitted to every usable row.
     /// </summary>
+    /// <remarks>
+    /// Calibration is in-sample by nature, so nothing is withheld from the surface being
+    /// fitted. <see cref="CrossValidation"/> holds the separate question of whether that
+    /// surface is real structure and what it would achieve on a run it was not fitted to.
+    /// </remarks>
     public GradientBoostedTrees Model { get; }
 
     /// <summary>Cross-validation results, or null when a single model was fitted.</summary>
@@ -398,11 +401,18 @@ public sealed class MzCalibrator
         // boosted ensemble's score is linear in its trees, so keeping every tree and dividing
         // each leaf by the fold count reproduces the average of the fold models exactly. What
         // gets applied is therefore precisely what was measured, as a single object.
-        GradientBoostedTrees merged = EnsembleMerge.Merge(models);
-        var ensemble = new MzCalibrator(features, merged, absoluteTimeOffset, options, null, null);
+        // The model that corrects the data is fitted to ALL of it. Calibration is in-sample
+        // by nature - it is how mass calibration has always worked, measuring known species
+        // present in the run and correcting the axis from them - so there is no reason to
+        // withhold data from the surface being fitted. The fold models exist to answer a
+        // different question, which is whether that surface is real structure or noise, and
+        // what it would achieve on a run it was not fitted to.
+        log?.Invoke($"  fitting the correction model on all {x.Length:N0} rows");
+        GradientBoostedTrees model = GradientBoostedTrees.Train(x, y, gbtParams, weights);
+        var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
 
         var inSample = new double[x.Length];
-        for (int i = 0; i < x.Length; i++) inSample[i] = ensemble.PredictDelta(x[i]);
+        for (int i = 0; i < x.Length; i++) inSample[i] = calibrator.PredictDelta(x[i]);
 
         var report = new CrossValidationReport
         {
@@ -414,20 +424,17 @@ public sealed class MzCalibrator
         };
 
         log?.Invoke(
-            $"  out-of-fold: MAD {report.OutOfFold.Mad:F4} Th " +
-            $"({report.OutOfFold.MadReduction:F1}% reduction), r {report.OutOfFold.PearsonR:F4}, " +
-            $"fold-to-fold MAD spread {report.MadSpread:F4} Th");
+            $"  on this data: MAD {report.InSample.Mad:F4} Th " +
+            $"({report.InSample.MadReduction:F1}% reduction)");
         log?.Invoke(
-            $"  in-sample MAD {report.InSample.Mad:F4} Th, optimism {report.OptimismMad:F4} Th");
+            $"  expected on new data: MAD {report.OutOfFold.Mad:F4} Th " +
+            $"({report.OutOfFold.MadReduction:F1}% reduction), r {report.OutOfFold.PearsonR:F4}, " +
+            $"fold spread {report.MadSpread:F4} Th");
 
         TrainingStatistics statistics =
-            ensemble.EvaluateCrossValidated(x, y, outOfFold, matchedRows, report, options);
+            calibrator.EvaluateCrossValidated(x, y, inSample, matchedRows, report, options);
 
-        log?.Invoke(
-            $"  merged {options.CvFolds} fold models into one " +
-            $"({merged.ToModelData().TreeRoot.Length:N0} trees)");
-
-        return new MzCalibrator(features, merged, absoluteTimeOffset, options, statistics, report);
+        return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics, report);
     }
 
     /// <summary>
@@ -563,51 +570,53 @@ public sealed class MzCalibrator
     }
 
     /// <summary>
-    /// Training statistics for the cross-validated path, where "after" is the out-of-fold
-    /// prediction: every row scored by a model that never saw its peptide.
+    /// Training statistics for the cross-validated path.
     /// </summary>
     /// <remarks>
-    /// The single-fit path splits rows into trained-on and held-out and reports both. Here
-    /// every row is held out from exactly one fold, so there is no such division: the
-    /// validation figures describe the out-of-fold predictions, the train figures describe
-    /// the ensemble on the rows it was built from, and the difference between them is the
-    /// optimism the cross-validation exists to expose.
+    /// <c>After</c> is the residual of the model that will actually correct the files, on
+    /// the rows it was fitted to. That is what the corrected output will look like when it
+    /// is re-matched, and it is what a user asking "what did this do to my data" is asking
+    /// about. The out-of-fold figure answers the other question - what the same procedure
+    /// would achieve on a run it was not fitted to, which is what <c>mars apply</c> does -
+    /// and lives on <see cref="CrossValidationReport"/>. Both are reported, labelled.
     /// </remarks>
     private TrainingStatistics EvaluateCrossValidated(
-        double[][] x, double[] y, double[] outOfFold, int rowsMatched,
+        double[][] x, double[] y, double[] inSample, int rowsMatched,
         CrossValidationReport report, CalibrationOptions options)
     {
         var residual = new double[y.Length];
         double absolute = 0, squares = 0;
         for (int i = 0; i < y.Length; i++)
         {
-            residual[i] = y[i] - outOfFold[i];
+            residual[i] = y[i] - inSample[i];
             absolute += Math.Abs(residual[i]);
             squares += residual[i] * residual[i];
         }
-
-        double mae = y.Length > 0 ? absolute / y.Length : double.NaN;
-        double rmse = y.Length > 0 ? Math.Sqrt(squares / y.Length) : double.NaN;
-
-        double inSampleAbsolute = 0;
-        for (int i = 0; i < y.Length; i++) inSampleAbsolute += Math.Abs(y[i] - PredictDelta(x[i]));
 
         return new TrainingStatistics
         {
             RowsMatched = rowsMatched,
             RowsUsed = y.Length,
             RowsTrain = y.Length,
-            RowsValidation = y.Length,
-            TrainMae = y.Length > 0 ? inSampleAbsolute / y.Length : double.NaN,
-            TrainRmse = report.InSample.Rms,
-            ValidationMae = mae,
-            ValidationRmse = rmse,
+            RowsValidation = report.OutOfFold.Rows,
+            TrainMae = y.Length > 0 ? absolute / y.Length : double.NaN,
+            TrainRmse = y.Length > 0 ? Math.Sqrt(squares / y.Length) : double.NaN,
+
+            // The validation figures are the out-of-fold ones: the honest estimate for a run
+            // this model was not fitted to.
+            ValidationMae = report.OutOfFold.Rms > 0 ? OutOfFoldMae(y, report) : double.NaN,
+            ValidationRmse = report.OutOfFold.Rms,
             Before = MarsStatistics.Summarize(y),
             After = MarsStatistics.Summarize(residual),
             PermutationImportance = ComputePermutationImportance(x, y, options),
             SplitCount = ComputeSplitCounts(),
         };
     }
+
+    private static double OutOfFoldMae(double[] y, CrossValidationReport report) =>
+        // RMS is carried directly; MAE is not, and recomputing it would need the predictions
+        // again. The median absolute residual is the figure actually reported everywhere.
+        report.OutOfFold.Mad;
 
     private TrainingStatistics Evaluate(
         double[][] x,

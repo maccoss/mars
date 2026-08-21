@@ -132,13 +132,13 @@ surface than one model per file.
 The defaults are XGBoost's defaults, which is not a coincidence: see
 [the model](model.md#hyperparameters). There is rarely a reason to change them.
 
-**Cross-validation costs correction time, not training time.** The five fold models are
-merged into one model that predicts exactly what averaging them would - but it carries five
-times the trees, and scoring cost is the number of trees traversed. Measured on one 1.47 GB
-Stellar file: 52 s for `--cv-folds 0` against 266 s for the default. Training the five
-models is only 16 s of the difference; the rest is the correction pass. `--cv-folds 0`
-trains a single model, at the cost of reporting an in-sample accuracy rather than an honest
-one. See [the model](model.md#cross-validation).
+**Cross-validation does not change what gets applied.** The correction model is an
+ordinary fit over every row - calibration is in-sample by nature - and the folds are a
+measurement taken alongside it, answering what the same procedure would achieve on a run it
+was not fitted to. So the cost is a few extra training rounds and nothing at correction
+time: 52 s for `--cv-folds 0` against 66 s for the default, on one 1.47 GB Stellar file.
+The report gives both numbers, labelled. See
+[the model](model.md#calibration-is-in-sample-and-that-is-not-a-problem).
 
 ### Output
 

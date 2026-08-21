@@ -76,16 +76,16 @@ public static class QcHtmlReport
             .Append(inputFiles.Count.ToString("N0", CultureInfo.InvariantCulture))
             .Append(inputFiles.Count == 1 ? " input file" : " input files").Append("</p>");
 
-        AppendVerdict(html, statistics, uncorrected);
+        AppendVerdict(html, statistics, uncorrected, data.CrossValidation);
         AppendSummaryTables(html, statistics, uncorrected, matchStatistics, inputFiles, toleranceDescription);
 
         bool corrected = data.ErrorAfter.Length == data.ErrorBefore.Length;
 
         Figure(html, "Mass error distribution",
             corrected
-                ? "The uncorrected error against what is left after the model's correction. If "
-                  + "these two distributions are not visibly different, the model found nothing "
-                  + "to remove."
+                ? "The uncorrected error against what is left in these files after correction. "
+                  + "If these two distributions are not visibly different, the model found "
+                  + "nothing to remove."
                 : "The mass error as measured, before any correction. Its width is what a model "
                   + "would have to work with; how much of it is removable is what calibrating "
                   + "would show.",
@@ -143,7 +143,8 @@ public static class QcHtmlReport
     }
 
     private static void AppendVerdict(
-        StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected)
+        StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected,
+        CrossValidationReport? crossValidation)
     {
         if (statistics is null)
         {
@@ -173,7 +174,19 @@ public static class QcHtmlReport
             .Append("% reduction</strong> in median absolute error, ")
             .Append(before.ToString("0.0000", CultureInfo.InvariantCulture)).Append(" &rarr; ")
             .Append(after.ToString("0.0000", CultureInfo.InvariantCulture)).Append(" Th. ")
-            .Append(verdict).Append("</div>");
+            .Append(verdict);
+
+        if (crossValidation is CrossValidationReport cv)
+        {
+            // Two numbers, two questions. The one above is what these files now look like;
+            // this is what the same procedure achieves on a run it was not fitted to.
+            html.Append(" On data not used to fit, cross-validation puts it at ")
+                .Append(Format(cv.OutOfFold.Mad)).Append(" Th (")
+                .Append(cv.OutOfFold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture))
+                .Append("%).");
+        }
+
+        html.Append("</div>");
     }
 
     /// <summary>
@@ -223,9 +236,10 @@ public static class QcHtmlReport
             .Append(" folds split by peptide, over ")
             .Append(cv.Groups.ToString("N0", CultureInfo.InvariantCulture))
             .Append(" peptides. Every row was scored by a model that never saw its peptide, so "
-                  + "these are the numbers to trust; splitting rows rather than peptides would let "
-                  + "the model memorize a peptide's fragment m/z and report an accuracy it cannot "
-                  + "reach on anything new.</p>");
+                  + "so these figures estimate what this correction would achieve on a run it was "
+                  + "not fitted to, which is what mars apply does. The figures elsewhere describe "
+                  + "these files, which the applied model was fitted to - as mass calibration "
+                  + "normally is.</p>");
 
         html.Append("<figure><table class=\"folds\">");
         html.Append("<tr><th>fold</th><th class=\"num\">rows</th><th class=\"num\">MAD (Th)</th>"
@@ -277,10 +291,10 @@ public static class QcHtmlReport
         Figure(html, null, null,
             Charts.FoldSpread(foldR, cv.OutOfFold.PearsonR, cv.PearsonRSpread, "r", "Pearson correlation"));
 
-        html.Append("<div class=\"verdict\"><strong>Optimism ")
-            .Append(Format(cv.OptimismMad)).Append(" Th.</strong> The ensemble scores ")
+        html.Append("<div class=\"verdict\"><strong>Gap ")
+            .Append(Format(cv.OptimismMad)).Append(" Th.</strong> The correction leaves ")
             .Append(Format(cv.InSample.Mad))
-            .Append(" Th on the rows it was built from and ")
+            .Append(" Th on the data it was fitted to and ")
             .Append(Format(cv.OutOfFold.Mad))
             .Append(" Th on peptides it had not seen. ")
             .Append(OptimismVerdict(cv))
@@ -297,10 +311,13 @@ public static class QcHtmlReport
         double relative = cv.OptimismMad / cv.OutOfFold.Mad;
         return relative switch
         {
-            < 0.05 => "The gap is negligible: the model generalizes to peptides it has never seen.",
+            < 0.05 => "The gap is negligible, so the fit describes the instrument rather than "
+                      + "the particular peptides in this run.",
             < 0.15 => "The gap is modest.",
-            < 0.30 => "The gap is substantial - the model is partly memorizing individual peptides.",
-            _ => "The gap is large. Treat any in-sample figure as meaningless here.",
+            < 0.30 => "The gap is substantial - the fit leans on the particular peptides in this "
+                      + "run, so reusing this model elsewhere would do less well.",
+            _ => "The gap is large. The fit is thin, and this model should not be reused on "
+                 + "other runs.",
         };
     }
 
