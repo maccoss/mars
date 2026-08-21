@@ -303,6 +303,12 @@ public static class Charts
         return svg.ToString();
     }
 
+    /// <summary>
+    /// Exponent for the density color ramp, as in matplotlib's PowerNorm. Below 1 it lifts
+    /// sparse cells; the further below, the more of the ramp goes to the sparse end.
+    /// </summary>
+    private const double DensityGamma = 0.4;
+
     /// <summary>Draws one density panel and returns the count in its busiest cell.</summary>
     private static int DrawDensityPanel(
         Svg svg, ReadOnlySpan<double> feature, ReadOnlySpan<double> error,
@@ -330,14 +336,19 @@ public static class Charts
             pixels[i + 2] = 255;
         }
 
-        double logPeak = Math.Log(1 + peak);
         for (int i = 0; i < counts.Length; i++)
         {
             if (counts[i] == 0) continue;
 
-            // Log, because the peak of a density like this runs orders of magnitude above the
-            // tails and a linear ramp would show one bright dot in a dark field.
-            double t = logPeak > 0 ? Math.Log(1 + counts[i]) / logPeak : 0;
+            // A power law rather than a log or a straight fraction. Straight fraction leaves
+            // one bright cell in a dark field, because the core of a density like this runs
+            // orders of magnitude above its tails. A log overcorrects: with a peak of 2,854 it
+            // puts a 500-count cell at 0.78 of the ramp, so most of the core saturates to
+            // yellow and the structure inside it - which is the part worth looking at - is
+            // flattened. The exponent below puts that same cell at 0.50, keeping the top of
+            // the ramp for cells actually near the peak while still lifting the sparse tail
+            // clear of black.
+            double t = peak > 0 ? Math.Pow((double)counts[i] / peak, DensityGamma) : 0;
             int cy = i / xBins, cx = i % xBins;
             SetPixel(pixels, xBins, cx, yBins - 1 - cy, Viridis(t));
         }

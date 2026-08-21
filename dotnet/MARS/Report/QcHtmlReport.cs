@@ -58,8 +58,16 @@ public static class QcHtmlReport
         IReadOnlyList<string> inputFiles,
         string toleranceDescription,
         string version,
-        ErrorSummary? uncorrected = null)
+        ErrorSummary? uncorrected = null,
+        ErrorScale? scale = null)
     {
+        scale ??= ErrorScale.Th;
+
+        // The charts are drawn from per-row values, so on a ppm report the rows themselves are
+        // converted once here and every chart below is already on the right scale.
+        double[] errorBefore = scale.Convert(data.ErrorBefore, data.FragmentMz);
+        double[] errorAfter = scale.Convert(data.ErrorAfter, data.FragmentMz);
+
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
@@ -76,8 +84,9 @@ public static class QcHtmlReport
             .Append(inputFiles.Count.ToString("N0", CultureInfo.InvariantCulture))
             .Append(inputFiles.Count == 1 ? " input file" : " input files").Append("</p>");
 
-        AppendVerdict(html, statistics, uncorrected, data.CrossValidation);
-        AppendSummaryTables(html, statistics, uncorrected, matchStatistics, inputFiles, toleranceDescription);
+        AppendVerdict(html, statistics, uncorrected, data.CrossValidation, scale);
+        AppendSummaryTables(
+            html, statistics, uncorrected, matchStatistics, inputFiles, toleranceDescription, scale);
 
         bool corrected = data.ErrorAfter.Length == data.ErrorBefore.Length;
 
@@ -89,7 +98,7 @@ public static class QcHtmlReport
                 : "The mass error as measured, before any correction. Its width is what a model "
                   + "would have to work with; how much of it is removable is what calibrating "
                   + "would show.",
-            Charts.ErrorHistogram(data.ErrorBefore, data.ErrorAfter, "Th"));
+            Charts.ErrorHistogram(errorBefore, errorAfter, scale.Unit));
 
         Figure(html, "Error across retention time and fragment m/z",
             corrected
@@ -102,9 +111,9 @@ public static class QcHtmlReport
                   + "featureless panel means the error is mostly noise. Blank cells held too few "
                   + "fragments to take a median from.",
             Charts.ErrorHeatmapPair(
-                data.RetentionTime, data.FragmentMz, data.ErrorBefore, data.ErrorAfter, "Th"));
+                data.RetentionTime, data.FragmentMz, errorBefore, errorAfter, scale.Unit));
 
-        AppendCrossValidation(html, data.CrossValidation);
+        AppendCrossValidation(html, data.CrossValidation, scale);
 
         if (data.Importance.Count > 0)
         {
@@ -117,7 +126,7 @@ public static class QcHtmlReport
         if (data.Features.Count > 0)
         {
             html.Append("<h2>Error against each feature</h2>");
-            html.Append("<p class=\"note\">Fragment count per cell, on a log scale, with the "
+            html.Append("<p class=\"note\">Fragment count per cell, with the "
                       + "median error per column drawn over it"
                       + (corrected ? ", before and after correction side by side" : string.Empty)
                       + ". The trend line is the part to read: a sloped line is a real dependence"
@@ -134,7 +143,7 @@ public static class QcHtmlReport
         {
             Figure(html, Pretty(name), null,
                 Charts.FeatureVersusErrorPair(
-                    values, data.ErrorBefore, data.ErrorAfter, Pretty(name), "Th"));
+                    values, errorBefore, errorAfter, Pretty(name), scale.Unit));
         }
 
         html.Append("</main></body></html>");
@@ -143,16 +152,16 @@ public static class QcHtmlReport
 
     private static void AppendVerdict(
         StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected,
-        CrossValidationReport? crossValidation)
+        CrossValidationReport? crossValidation, ErrorScale scale)
     {
         if (statistics is null)
         {
-            AppendPreCalibrationVerdict(html, uncorrected);
+            AppendPreCalibrationVerdict(html, uncorrected, scale);
             return;
         }
 
-        double before = statistics.Before.Mad;
-        double after = statistics.After.Mad;
+        double before = (scale.Pick(statistics.Before, statistics.BeforePpm) ?? statistics.Before).Mad;
+        double after = (scale.Pick(statistics.After, statistics.AfterPpm) ?? statistics.After).Mad;
         if (!(before > 0)) return;
 
         double reduction = 100 * (1 - (after / before));
@@ -171,17 +180,18 @@ public static class QcHtmlReport
         html.Append("<div class=\"verdict\"><strong>")
             .Append(reduction.ToString("0.0", CultureInfo.InvariantCulture))
             .Append("% reduction</strong> in median absolute error, ")
-            .Append(before.ToString("0.0000", CultureInfo.InvariantCulture)).Append(" &rarr; ")
-            .Append(after.ToString("0.0000", CultureInfo.InvariantCulture)).Append(" Th. ")
+            .Append(scale.Format(before)).Append(" &rarr; ")
+            .Append(scale.Format(after)).Append(' ').Append(scale.Unit).Append(". ")
             .Append(verdict);
 
         if (crossValidation is CrossValidationReport cv)
         {
             // Two numbers, two questions. The one above is what these files now look like;
             // this is what the same procedure achieves on a run it was not fitted to.
+            FoldMetrics outOfFold = scale.Pick(cv.OutOfFold, cv.OutOfFoldPpm);
             html.Append(" On data not used to fit, cross-validation puts it at ")
-                .Append(Format(cv.OutOfFold.Mad)).Append(" Th (")
-                .Append(cv.OutOfFold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture))
+                .Append(scale.Format(outOfFold.Mad)).Append(' ').Append(scale.Unit).Append(" (")
+                .Append(outOfFold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture))
                 .Append("%).");
         }
 
@@ -193,15 +203,17 @@ public static class QcHtmlReport
     /// offset. It cannot say how much is removable - only fitting a model answers that - so
     /// it does not pretend to.
     /// </summary>
-    private static void AppendPreCalibrationVerdict(StringBuilder html, ErrorSummary? uncorrected)
+    private static void AppendPreCalibrationVerdict(
+        StringBuilder html, ErrorSummary? uncorrected, ErrorScale scale)
     {
         if (uncorrected is not ErrorSummary summary || summary.Count == 0) return;
 
         html.Append("<div class=\"verdict\"><strong>")
-            .Append(Format(summary.Mad)).Append(" Th</strong> median absolute error across ")
+            .Append(scale.Format(summary.Mad)).Append(' ').Append(scale.Unit)
+            .Append("</strong> median absolute error across ")
             .Append(summary.Count.ToString("N0", CultureInfo.InvariantCulture))
             .Append(" matched fragments, with a median of ")
-            .Append(Format(summary.Median)).Append(" Th. ");
+            .Append(scale.Format(summary.Median)).Append(' ').Append(scale.Unit).Append(". ");
 
         // A median well away from zero is a straight offset across the whole run, which is
         // the most obviously correctable thing there is.
@@ -225,9 +237,15 @@ public static class QcHtmlReport
     /// a wide one means the cohort has regions the model handles very differently and the
     /// headline figure is an average over them.
     /// </remarks>
-    private static void AppendCrossValidation(StringBuilder html, CrossValidationReport? cv)
+    private static void AppendCrossValidation(
+        StringBuilder html, CrossValidationReport? cv, ErrorScale scale)
     {
         if (cv is null) return;
+
+        FoldMetrics[] perFold = cv.PerFold;
+        if (scale.IsPpm && cv.PerFoldPpm is FoldMetrics[] ppmFolds) perFold = ppmFolds;
+        FoldMetrics pooled = scale.Pick(cv.OutOfFold, cv.OutOfFoldPpm);
+        FoldMetrics inSample = scale.Pick(cv.InSample, cv.InSamplePpm);
 
         html.Append("<h2>Cross-validation</h2>");
         html.Append("<p class=\"note\">")
@@ -241,43 +259,46 @@ public static class QcHtmlReport
                   + "normally is.</p>");
 
         html.Append("<figure><table class=\"folds\">");
-        html.Append("<tr><th>fold</th><th class=\"num\">rows</th><th class=\"num\">MAD (Th)</th>"
-                  + "<th class=\"num\">RMS (Th)</th><th class=\"num\">reduction</th>"
+        html.Append("<tr><th>fold</th><th class=\"num\">rows</th><th class=\"num\">MAD (")
+            .Append(scale.Unit).Append(")</th><th class=\"num\">RMS (").Append(scale.Unit)
+            .Append(")</th><th class=\"num\">reduction</th>"
                   + "<th class=\"num\">Pearson r</th></tr>");
 
-        for (int i = 0; i < cv.PerFold.Length; i++)
+        for (int i = 0; i < perFold.Length; i++)
         {
-            FoldMetrics fold = cv.PerFold[i];
+            FoldMetrics fold = perFold[i];
             html.Append("<tr><td>").Append(i + 1).Append("</td>")
                 .Append("<td class=\"num\">").Append(fold.Rows.ToString("N0", CultureInfo.InvariantCulture)).Append("</td>")
-                .Append("<td class=\"num\">").Append(Format(fold.Mad)).Append("</td>")
-                .Append("<td class=\"num\">").Append(Format(fold.Rms)).Append("</td>")
+                .Append("<td class=\"num\">").Append(scale.Format(fold.Mad)).Append("</td>")
+                .Append("<td class=\"num\">").Append(scale.Format(fold.Rms)).Append("</td>")
                 .Append("<td class=\"num\">").Append(fold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture)).Append("%</td>")
                 .Append("<td class=\"num\">").Append(Format(fold.PearsonR)).Append("</td></tr>");
         }
 
         html.Append("<tr class=\"total\"><td>pooled</td>")
-            .Append("<td class=\"num\">").Append(cv.OutOfFold.Rows.ToString("N0", CultureInfo.InvariantCulture)).Append("</td>")
-            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.Mad)).Append("</td>")
-            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.Rms)).Append("</td>")
-            .Append("<td class=\"num\">").Append(cv.OutOfFold.MadReduction.ToString("0.0", CultureInfo.InvariantCulture)).Append("%</td>")
-            .Append("<td class=\"num\">").Append(Format(cv.OutOfFold.PearsonR)).Append("</td></tr>");
+            .Append("<td class=\"num\">").Append(pooled.Rows.ToString("N0", CultureInfo.InvariantCulture)).Append("</td>")
+            .Append("<td class=\"num\">").Append(scale.Format(pooled.Mad)).Append("</td>")
+            .Append("<td class=\"num\">").Append(scale.Format(pooled.Rms)).Append("</td>")
+            .Append("<td class=\"num\">").Append(pooled.MadReduction.ToString("0.0", CultureInfo.InvariantCulture)).Append("%</td>")
+            .Append("<td class=\"num\">").Append(Format(pooled.PearsonR)).Append("</td></tr>");
 
         html.Append("<tr class=\"spread\"><td>spread</td><td class=\"num\"></td>")
-            .Append("<td class=\"num\">").Append(PlusMinus(cv.MadSpread)).Append("</td>")
-            .Append("<td class=\"num\">").Append(PlusMinus(cv.RmsSpread)).Append("</td>")
+            .Append("<td class=\"num\">")
+            .Append(PlusMinus(CrossValidationReport.Spread(perFold, static f => f.Mad), scale)).Append("</td>")
+            .Append("<td class=\"num\">")
+            .Append(PlusMinus(CrossValidationReport.Spread(perFold, static f => f.Rms), scale)).Append("</td>")
             .Append("<td class=\"num\">").Append(PlusMinus(cv.MadReductionSpread)).Append("</td>")
             .Append("<td class=\"num\">").Append(PlusMinus(cv.PearsonRSpread)).Append("</td></tr>");
 
         html.Append("</table><figcaption>Spread is the standard deviation across folds.</figcaption>");
         html.Append("</figure>");
 
-        var foldMad = new double[cv.PerFold.Length];
-        var foldR = new double[cv.PerFold.Length];
-        for (int i = 0; i < cv.PerFold.Length; i++)
+        var foldMad = new double[perFold.Length];
+        var foldR = new double[perFold.Length];
+        for (int i = 0; i < perFold.Length; i++)
         {
-            foldMad[i] = cv.PerFold[i].Mad;
-            foldR[i] = cv.PerFold[i].PearsonR;
+            foldMad[i] = perFold[i].Mad;
+            foldR[i] = perFold[i].PearsonR;
         }
 
         Figure(html, null,
@@ -285,29 +306,37 @@ public static class QcHtmlReport
             + "the estimate is stable and the pooled number can be read as-is; folds scattered "
             + "across the band mean the cohort has regions the model handles very differently, "
             + "and the pooled number is an average over them.",
-            Charts.FoldSpread(foldMad, cv.OutOfFold.Mad, cv.MadSpread, "Th", "Median absolute residual"));
+            Charts.FoldSpread(
+                foldMad, pooled.Mad, CrossValidationReport.Spread(perFold, static f => f.Mad), scale.Unit,
+                "Median absolute residual"));
 
         Figure(html, null, null,
-            Charts.FoldSpread(foldR, cv.OutOfFold.PearsonR, cv.PearsonRSpread, "r", "Pearson correlation"));
+            Charts.FoldSpread(foldR, pooled.PearsonR, cv.PearsonRSpread, "r", "Pearson correlation"));
 
         html.Append("<div class=\"verdict\"><strong>Gap ")
-            .Append(Format(cv.OptimismMad)).Append(" Th.</strong> The correction leaves ")
-            .Append(Format(cv.InSample.Mad))
-            .Append(" Th on the data it was fitted to and ")
-            .Append(Format(cv.OutOfFold.Mad))
-            .Append(" Th on peptides it had not seen. ")
-            .Append(OptimismVerdict(cv))
+            .Append(scale.Format(pooled.Mad - inSample.Mad)).Append(' ').Append(scale.Unit)
+            .Append(".</strong> The correction leaves ")
+            .Append(scale.Format(inSample.Mad)).Append(' ').Append(scale.Unit)
+            .Append(" on the data it was fitted to and ")
+            .Append(scale.Format(pooled.Mad)).Append(' ').Append(scale.Unit)
+            .Append(" on peptides it had not seen. ")
+            .Append(OptimismVerdict(pooled.Mad - inSample.Mad, pooled.Mad))
             .Append("</div>");
     }
+
+    private static string PlusMinus(double value, ErrorScale scale) =>
+        double.IsNaN(value) ? "n/a" : "+/-" + scale.Format(value);
 
     private static string PlusMinus(double value) =>
         double.IsNaN(value) ? "n/a" : "+/-" + value.ToString("0.0000", CultureInfo.InvariantCulture);
 
-    private static string OptimismVerdict(CrossValidationReport cv)
+    /// <param name="gap">Out-of-fold minus in-sample, on the report's scale.</param>
+    /// <param name="outOfFold">Out-of-fold MAD on the same scale, to judge the gap against.</param>
+    private static string OptimismVerdict(double gap, double outOfFold)
     {
-        if (!(cv.OutOfFold.Mad > 0)) return "The gap cannot be assessed.";
+        if (!(outOfFold > 0)) return "The gap cannot be assessed.";
 
-        double relative = cv.OptimismMad / cv.OutOfFold.Mad;
+        double relative = gap / outOfFold;
         return relative switch
         {
             < 0.05 => "The gap is negligible, so the fit describes the instrument rather than "
@@ -323,7 +352,7 @@ public static class QcHtmlReport
     private static void AppendSummaryTables(
         StringBuilder html, TrainingStatistics? statistics, ErrorSummary? uncorrected,
         MatchStatistics matchStatistics, IReadOnlyList<string> inputFiles,
-        string toleranceDescription)
+        string toleranceDescription, ErrorScale scale)
     {
         html.Append("<div class=\"grid\">");
 
@@ -339,25 +368,30 @@ public static class QcHtmlReport
             html.Append("<section><h2>Model</h2><table>");
             Row(html, "Training rows", statistics.RowsTrain.ToString("N0", CultureInfo.InvariantCulture));
             Row(html, "Held out", statistics.RowsValidation.ToString("N0", CultureInfo.InvariantCulture));
+            // Train and validation MAE come off the model, which is fitted in Th whatever the
+            // report is drawn in, so these two stay in Th and say so.
             Row(html, "Train MAE", Format(statistics.TrainMae) + " Th");
             if (statistics.RowsValidation > 0)
                 Row(html, "Validation MAE", Format(statistics.ValidationMae) + " Th");
             html.Append("</table></section>");
 
-            html.Append("<section><h2>Mass error</h2><table>");
+            ErrorSummary before = scale.Pick(statistics.Before, statistics.BeforePpm) ?? statistics.Before;
+            ErrorSummary after = scale.Pick(statistics.After, statistics.AfterPpm) ?? statistics.After;
+
+            html.Append("<section><h2>Mass error (").Append(scale.Unit).Append(")</h2><table>");
             html.Append("<tr><th></th><th>before</th><th>after</th></tr>");
-            Row3(html, "Median absolute deviation", statistics.Before.Mad, statistics.After.Mad);
-            Row3(html, "Standard deviation", statistics.Before.StdDev, statistics.After.StdDev);
-            Row3(html, "Median", statistics.Before.Median, statistics.After.Median);
+            Row3(html, "Median absolute deviation", before.Mad, after.Mad, scale);
+            Row3(html, "Standard deviation", before.StdDev, after.StdDev, scale);
+            Row3(html, "Median", before.Median, after.Median, scale);
             html.Append("</table></section>");
         }
         else if (uncorrected is ErrorSummary summary)
         {
             html.Append("<section><h2>Mass error</h2><table>");
-            Row(html, "Median absolute deviation", Format(summary.Mad) + " Th");
-            Row(html, "Standard deviation", Format(summary.StdDev) + " Th");
-            Row(html, "Median", Format(summary.Median) + " Th");
-            Row(html, "Mean absolute error", Format(summary.Mae) + " Th");
+            Row(html, "Median absolute deviation", scale.Format(summary.Mad) + " " + scale.Unit);
+            Row(html, "Standard deviation", scale.Format(summary.StdDev) + " " + scale.Unit);
+            Row(html, "Median", scale.Format(summary.Median) + " " + scale.Unit);
+            Row(html, "Mean absolute error", scale.Format(summary.Mae) + " " + scale.Unit);
             html.Append("</table></section>");
         }
 
@@ -373,10 +407,11 @@ public static class QcHtmlReport
         html.Append("<tr><td>").Append(Svg.Escape(label)).Append("</td><td class=\"num\">")
             .Append(Svg.Escape(value)).Append("</td></tr>");
 
-    private static void Row3(StringBuilder html, string label, double before, double after) =>
+    private static void Row3(
+        StringBuilder html, string label, double before, double after, ErrorScale scale) =>
         html.Append("<tr><td>").Append(Svg.Escape(label)).Append("</td><td class=\"num\">")
-            .Append(Format(before)).Append("</td><td class=\"num\">")
-            .Append(Format(after)).Append("</td></tr>");
+            .Append(scale.Format(before)).Append("</td><td class=\"num\">")
+            .Append(scale.Format(after)).Append("</td></tr>");
 
     private static string Format(double value) =>
         double.IsNaN(value) ? "n/a" : value.ToString("0.0000", CultureInfo.InvariantCulture);

@@ -36,6 +36,49 @@ fit a model on a few hundred noisy rows and hand back a file that looks correcte
 
 ---
 
+## Resolution and tolerance
+
+MARS reads the mass analyzer out of the mzML and picks a fragment tolerance to match, so
+neither `qc` nor `calibrate` normally needs to be told what instrument produced the data.
+
+| `--resolution` | Meaning |
+|---|---|
+| `auto` (default) | Read the analyzer from the file's `instrumentConfiguration` and pick |
+| `unit` | Ion trap or quadrupole: 0.3 Th, QC report in Th |
+| `hram` | Orbitrap, FT-ICR, TOF or Astral: 10 ppm, QC report in ppm |
+
+The mode sets **defaults only**. An explicit `--tolerance` or `--tolerance-ppm` always wins;
+detection can be wrong on a file MARS has not seen the shape of, and the person running it
+can be certain in a way a heuristic cannot.
+
+Detection reads the analyzer for the **MS2** spectra specifically, which on a hybrid
+instrument is not the one the run names as its default. An Orbitrap Astral file declares two
+configurations - the orbitrap that takes the MS1 survey, which is the run default, and the
+Astral analyzer that only the MS2 spectra point at. MS2 is what MARS calibrates, so that is
+the one that decides.
+
+The choice appears in the log:
+
+```
+INFO   high-resolution data; fragment tolerance 10 ppm (--tolerance or --tolerance-ppm to override)
+INFO   unit-resolution data; fragment tolerance 0.3 Th (--tolerance or --tolerance-ppm to override)
+```
+
+When the file does not say, MARS warns and falls back to 0.3 Th rather than guessing
+silently:
+
+```
+WARNING: could not tell the mass analyzer from the file; assuming unit resolution and a
+0.300 Th tolerance. Pass --resolution hram or --tolerance-ppm if this is Orbitrap, TOF or
+Astral data.
+```
+
+Getting this wrong is quiet rather than loud, which is why it is detected. See
+[choosing a tolerance](spectral-libraries.md#choosing-a-tolerance) for what a mismatched
+window actually does to the numbers.
+
+---
+
 ## `mars qc`
 
 Matches library fragments against the spectra and reports the mass error that is already
@@ -58,7 +101,8 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
-| `--tolerance <Th>` | Fragment tolerance in Th (default 0.3) |
+| `--resolution <mode>` | `unit`, `hram` or `auto` (default `auto`) |
+| `--tolerance <Th>` | Fragment tolerance in Th (default 0.3, or from `--resolution`) |
 | `--tolerance-ppm <ppm>` | Fragment tolerance in ppm; overrides `--tolerance` |
 | `--min-intensity <n>` | Minimum peak intensity to match (default 500) |
 | `--max-isolation-window <Th>` | Skip spectra with wider isolation windows |
@@ -109,6 +153,7 @@ surface than one model per file.
 
 | Option | Default | Meaning |
 |---|---|---|
+| `--resolution <mode>` | `auto` | `unit`, `hram` or `auto` |
 | `--tolerance <Th>` | 0.3 | Fragment tolerance in Th |
 | `--tolerance-ppm <ppm>` | - | Fragment tolerance in ppm; overrides `--tolerance` |
 | `--min-intensity <n>` | 500 | Minimum peak intensity to match |

@@ -17,7 +17,10 @@ public sealed class CommandLineArgs
 {
     private readonly Dictionary<string, List<string>> _options = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _positional = new();
-    private readonly HashSet<string> _consumed = new(StringComparer.OrdinalIgnoreCase);
+    // Every name any command has asked about, whether it was supplied or not. This is the
+    // set of options the running command understands, and it maintains itself: a new option
+    // is recognized by the act of reading it, so there is no second list to keep in sync.
+    private readonly HashSet<string> _queried = new(StringComparer.OrdinalIgnoreCase);
 
     private CommandLineArgs()
     {
@@ -75,13 +78,10 @@ public sealed class CommandLineArgs
 
     public bool Has(params string[] names)
     {
+        Query(names);
         foreach (string name in names)
         {
-            if (_options.ContainsKey(name))
-            {
-                _consumed.Add(name);
-                return true;
-            }
+            if (_options.ContainsKey(name)) return true;
         }
 
         return false;
@@ -89,11 +89,11 @@ public sealed class CommandLineArgs
 
     public bool Flag(params string[] names)
     {
+        Query(names);
         foreach (string name in names)
         {
             if (_options.TryGetValue(name, out List<string>? values))
             {
-                _consumed.Add(name);
                 return values.Count == 0 ||
                        !string.Equals(values[^1], "false", StringComparison.OrdinalIgnoreCase);
             }
@@ -104,13 +104,11 @@ public sealed class CommandLineArgs
 
     public string? String(params string[] names)
     {
+        Query(names);
         foreach (string name in names)
         {
             if (_options.TryGetValue(name, out List<string>? values) && values.Count > 0)
-            {
-                _consumed.Add(name);
                 return values[^1];
-            }
         }
 
         return null;
@@ -118,14 +116,11 @@ public sealed class CommandLineArgs
 
     public IReadOnlyList<string> Strings(params string[] names)
     {
+        Query(names);
         var all = new List<string>();
         foreach (string name in names)
         {
-            if (_options.TryGetValue(name, out List<string>? values))
-            {
-                _consumed.Add(name);
-                all.AddRange(values);
-            }
+            if (_options.TryGetValue(name, out List<string>? values)) all.AddRange(values);
         }
 
         return all;
@@ -149,9 +144,87 @@ public sealed class CommandLineArgs
         return value;
     }
 
-    /// <summary>Options the command never asked about; almost always a typo.</summary>
+    private void Query(string[] names)
+    {
+        foreach (string name in names) _queried.Add(name);
+    }
+
+    /// <summary>Options the command does not understand; almost always a typo.</summary>
     public IReadOnlyList<string> UnknownOptions() =>
-        _options.Keys.Where(k => !_consumed.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+        _options.Keys.Where(k => !_queried.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// Fails the run if any supplied option is one this command does not understand.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called once each command has read its options and before it starts work, so a typo
+    /// costs a second rather than the length of a run. It has to be a refusal rather than a
+    /// warning: a mistyped --tolerance-ppm does not stop MARS, it silently calibrates against
+    /// the 0.3 Th default, and on a high-resolution instrument that is a wide enough window
+    /// to admit mostly wrong matches. The run finishes, writes corrected files and reports
+    /// plausible numbers, all of them meaningless.
+    /// </para>
+    /// <para>
+    /// A misplaced call would be worse than none - an option read after it has not been
+    /// queried yet and would be rejected while valid - so
+    /// <c>EveryDocumentedOptionSurvivesTheUnknownOptionCheck</c> passes each command its full
+    /// documented option set and asserts nothing is rejected.
+    /// </para>
+    /// </remarks>
+    public void RejectUnknown()
+    {
+        IReadOnlyList<string> unknown = UnknownOptions();
+        if (unknown.Count == 0) return;
+
+        var message = new System.Text.StringBuilder();
+        foreach (string name in unknown)
+        {
+            if (message.Length > 0) message.Append("; ");
+            message.Append($"Unknown option --{name}");
+            if (Closest(name) is string suggestion) message.Append($". Did you mean --{suggestion}?");
+        }
+
+        message.Append($" (mars {Command} --help lists the options)");
+        throw new UnknownOptionException(message.ToString());
+    }
+
+    /// <summary>The nearest option this command does understand, if one is near enough.</summary>
+    private string? Closest(string name)
+    {
+        string? best = null;
+        int bestDistance = int.MaxValue;
+        foreach (string candidate in _queried)
+        {
+            int distance = Distance(name, candidate);
+            if (distance < bestDistance) (best, bestDistance) = (candidate, distance);
+        }
+
+        // A third of the length, so short options do not suggest each other: --threads and
+        // --report are five edits apart and neither is a plausible typo for the other.
+        return bestDistance <= Math.Max(1, name.Length / 3) ? best : null;
+    }
+
+    private static int Distance(string a, string b)
+    {
+        var previous = new int[b.Length + 1];
+        var current = new int[b.Length + 1];
+        for (int j = 0; j <= b.Length; j++) previous[j] = j;
+
+        for (int i = 1; i <= a.Length; i++)
+        {
+            current[0] = i;
+            for (int j = 1; j <= b.Length; j++)
+            {
+                int cost = char.ToLowerInvariant(a[i - 1]) == char.ToLowerInvariant(b[j - 1]) ? 0 : 1;
+                current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + cost);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[b.Length];
+    }
 
     /// <summary>
     /// Expands file arguments and glob patterns into a sorted, de-duplicated list. Shells

@@ -22,6 +22,18 @@ public sealed class SpectrumRecord
 
     public int MsLevel;
 
+    /// <summary>
+    /// The spectrum's instrumentConfigurationRef, or null when it inherits the run default.
+    /// On a hybrid instrument this is what says which analyzer recorded the scan.
+    /// </summary>
+    public string? InstrumentConfigurationRef;
+
+    /// <summary>
+    /// Thermo's scan filter (MS:1000512), when present. A fallback for identifying the
+    /// analyzer on files whose instrument configuration does not settle it.
+    /// </summary>
+    public string? FilterString;
+
     /// <summary>Scan start time, in minutes.</summary>
     public double RetentionTime;
 

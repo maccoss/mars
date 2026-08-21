@@ -47,7 +47,7 @@ public static class CalibrateCommand
 
         var matchOptions = new MatchOptions
         {
-            MzToleranceTh = args.Double("tolerance") ?? 0.3,
+            MzToleranceTh = args.Double("tolerance") ?? ResolutionMode.DefaultToleranceTh,
             TolerancePpm = args.Double("tolerance-ppm") ?? 0,
             MinIntensity = args.Double("min-intensity") ?? 500.0,
             MaxIsolationWindowWidth = args.Double("max-isolation-window"),
@@ -78,6 +78,16 @@ public static class CalibrateCommand
         bool noRecalibrate = args.Flag("no-recalibrate");
         string? temperatureDirectory = args.String("temperature-dir");
 
+        ResolutionMode resolution = ResolutionMode.Resolve(args, mzmlFiles, matchOptions, Log.Info);
+
+        // Read before the check below rather than inside LoadLibrary, so that every option
+        // this command understands has been seen by the time the check runs.
+        var librarySource = LibrarySource.From(args);
+
+        // Everything is read; refuse a typo now rather than after minutes of work, or worse,
+        // after writing corrected files from a run that silently used a default.
+        args.RejectUnknown();
+
         Log.Info($"Found {mzmlFiles.Count} mzML file(s) to process");
         var stopwatch = Stopwatch.StartNew();
 
@@ -85,7 +95,7 @@ public static class CalibrateCommand
         var runNames = new List<string>();
         foreach (string file in mzmlFiles) runNames.Add(Path.GetFileName(file));
 
-        SpectralLibrary library = LoadLibrary(args, runNames, keepSequences: keepDetail);
+        SpectralLibrary library = librarySource.Load(runNames, keepSequences: keepDetail, Log.Info);
 
         // ---- Pass 1: match fragments across every input file -------------------------
         var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
@@ -206,7 +216,9 @@ public static class CalibrateCommand
                 matcher.Statistics,
                 mzmlFiles,
                 DescribeTolerance(matchOptions),
-                MarsInfo.Version);
+                MarsInfo.Version,
+                uncorrected: null,
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 
@@ -241,60 +253,10 @@ public static class CalibrateCommand
         return Program.ExitSuccess;
     }
 
-    private static SpectralLibrary LoadLibrary(
-        CommandLineArgs args, List<string> runNames, bool keepSequences)
-    {
-        string? prismCsv = args.String("prism-csv");
-        string? libraryPath = args.String("library");
-
-        var options = new PrismLibraryOptions
-        {
-            RunNames = runNames,
-            DedupeFragments = !args.Flag("no-dedupe-library"),
-            // Sequences are dropped by default because a plate-scale report carries tens
-            // of millions of them. A dump is a diagnostic run, so the memory is worth the
-            // peptide identity in the output.
-            KeepSequences = keepSequences,
-        };
-
-        if (prismCsv is not null)
-        {
-            Log.Info($"Loading PRISM library: {prismCsv}");
-            return PrismCsvLibraryReader.Load(prismCsv, options, Log.Info);
-        }
-
-        if (libraryPath is null)
-            throw new FileNotFoundException("A library is required: --prism-csv or --library.");
-
-        if (libraryPath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            Log.Info($"Loading PRISM library: {libraryPath}");
-            return PrismCsvLibraryReader.Load(libraryPath, options, Log.Info);
-        }
-
-        if (libraryPath.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase))
-        {
-            Log.Info($"Loading DIA-NN library: {libraryPath}");
-            return DiannParquetLibraryReader.Load(libraryPath, args.String("diann-report"), runNames, Log.Info);
-        }
-
-        if (libraryPath.EndsWith(".blib", StringComparison.OrdinalIgnoreCase))
-        {
-            Log.Info($"Loading BiblioSpec library: {libraryPath}");
-            return BlibLibraryReader.Load(libraryPath, args.Double("rt-window") ?? 0.083, Log.Info);
-        }
-
-        throw new InvalidDataException(
-            $"Unrecognized library type '{Path.GetExtension(libraryPath)}'. Expected .blib, .parquet or .csv.");
-    }
-
     /// <summary>
-    /// Checks whether the run reports an ion injection time, by looking at its first MS2
-    /// spectrum. Fourteen of the twenty-two features are undefined without one.
-    /// </summary>
-    /// <summary>
-    /// Whether the first MS2 spectrum carries an ion injection time. If it does not, the
-    /// whole injection-time feature group is dropped rather than filled with zeros.
+    /// Whether the first MS2 spectrum carries an ion injection time. Fourteen of the
+    /// twenty-two features are undefined without one, and if it is absent that whole feature
+    /// group is dropped rather than filled with zeros.
     /// </summary>
     internal static bool ProbeInjectionTime(MzMLFileInfo info)
     {
@@ -385,6 +347,9 @@ public static class CalibrateCommand
                   --temperature-dir <d>  Directory of RFA2-/RFC2- temperature CSVs
 
             Matching:
+                  --resolution <mode>    unit, hram or auto (default auto: read the mass
+                                         analyzer from the mzML and pick the tolerance
+                                         and the QC report's units to match)
                   --tolerance <Th>       Fragment tolerance in Th (default 0.3)
                   --tolerance-ppm <ppm>  Fragment tolerance in ppm; overrides --tolerance
                   --min-intensity <n>    Minimum peak intensity to match (default 500)

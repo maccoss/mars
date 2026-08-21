@@ -34,6 +34,18 @@ public sealed class MzMLFileInfo
     /// so MARS copies it through unindexed rather than producing invalid XML.
     /// </summary>
     public required bool IsIndexedMzML { get; init; }
+
+    /// <summary>
+    /// Measuring analyzer accession per instrumentConfiguration id, from the file header.
+    /// Empty when the header did not say.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> AnalyzerByConfiguration { get; init; } =
+        new Dictionary<string, string>();
+
+    /// <summary>
+    /// The run's defaultInstrumentConfigurationRef, used by spectra that do not name one.
+    /// </summary>
+    public string? DefaultConfiguration { get; init; }
 }
 
 public static class MzMLFile
@@ -51,6 +63,8 @@ public static class MzMLFile
         if (!file.Exists) throw new FileNotFoundException("mzML file not found.", path);
 
         double? acquisitionStart = null;
+        string? defaultConfiguration = null;
+        Dictionary<string, string> analyzers;
         bool indexedRoot;
         using (FileStream stream = File.OpenRead(path))
         {
@@ -60,6 +74,17 @@ public static class MzMLFile
             string header = Encoding.UTF8.GetString(probe, 0, read);
 
             indexedRoot = header.Contains("<indexedmzML", StringComparison.Ordinal);
+
+            analyzers = ParseAnalyzers(header);
+
+            const string configMarker = "defaultInstrumentConfigurationRef=\"";
+            int refAt = header.IndexOf(configMarker, StringComparison.Ordinal);
+            if (refAt >= 0)
+            {
+                int start = refAt + configMarker.Length;
+                int end = header.IndexOf('"', start);
+                if (end > start) defaultConfiguration = header[start..end];
+            }
 
             const string marker = "startTimeStamp=\"";
             int at = header.IndexOf(marker, StringComparison.Ordinal);
@@ -81,7 +106,120 @@ public static class MzMLFile
             ContentCutOffset = cut,
             WasIndexed = indexed,
             IsIndexedMzML = indexedRoot,
+            AnalyzerByConfiguration = analyzers,
+            DefaultConfiguration = defaultConfiguration,
         };
+    }
+
+    /// <summary>
+    /// Reads instrumentConfiguration ids and the analyzer each one measures with, out of the
+    /// header text already in hand.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a scan of the header probe rather than an XML parse: this runs on files
+    /// of several gigabytes whose header MARS otherwise only reads to find two attributes,
+    /// and a configuration list that falls outside the probe is a missing answer rather than
+    /// a wrong one - detection degrades to "unknown" and the caller keeps its default.
+    /// </remarks>
+    private static Dictionary<string, string> ParseAnalyzers(string header)
+    {
+        var byConfiguration = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        const string open = "<instrumentConfiguration id=\"";
+        int at = header.IndexOf(open, StringComparison.Ordinal);
+        while (at >= 0)
+        {
+            int idStart = at + open.Length;
+            int idEnd = header.IndexOf('"', idStart);
+            if (idEnd < 0) break;
+
+            string id = header[idStart..idEnd];
+            int close = header.IndexOf("</instrumentConfiguration>", idEnd, StringComparison.Ordinal);
+            int next = header.IndexOf(open, idEnd, StringComparison.Ordinal);
+            if (close < 0) close = next >= 0 ? next : header.Length;
+
+            var analyzers = new List<(int Order, string Accession)>();
+            foreach ((int order, string accession) in ScanAnalyzers(header, idEnd, close))
+                analyzers.Add((order, accession));
+
+            if (MassAnalyzers.MeasuringAnalyzer(analyzers) is string measuring)
+                byConfiguration[id] = measuring;
+
+            at = next;
+        }
+
+        return byConfiguration;
+    }
+
+    private static IEnumerable<(int Order, string Accession)> ScanAnalyzers(string header, int from, int to)
+    {
+        const string open = "<analyzer order=\"";
+        int at = header.IndexOf(open, from, StringComparison.Ordinal);
+        while (at >= 0 && at < to)
+        {
+            int orderStart = at + open.Length;
+            int orderEnd = header.IndexOf('"', orderStart);
+            if (orderEnd < 0 || orderEnd > to) yield break;
+
+            int close = header.IndexOf("</analyzer>", orderEnd, StringComparison.Ordinal);
+            if (close < 0 || close > to) close = to;
+
+            if (int.TryParse(header.AsSpan(orderStart, orderEnd - orderStart), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int order))
+            {
+                // The first accession inside the element is the analyzer type; anything after
+                // it describes the analyzer rather than naming it.
+                const string accessionMarker = "accession=\"";
+                int accessionAt = header.IndexOf(accessionMarker, orderEnd, StringComparison.Ordinal);
+                if (accessionAt >= 0 && accessionAt < close)
+                {
+                    int accessionStart = accessionAt + accessionMarker.Length;
+                    int accessionEnd = header.IndexOf('"', accessionStart);
+                    if (accessionEnd > accessionStart)
+                        yield return (order, header[accessionStart..accessionEnd]);
+                }
+            }
+
+            at = header.IndexOf(open, close, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Works out which analyzer recorded this run's MS2 spectra - the ones MARS calibrates.
+    /// </summary>
+    /// <remarks>
+    /// The run's default configuration is not the answer on its own. A file from an Orbitrap
+    /// Astral names the orbitrap as the run default because that is what takes the MS1
+    /// survey, and points each MS2 spectrum at a second configuration for the Astral
+    /// analyzer. Reading only the header would classify such a run by its MS1 analyzer, which
+    /// on a hybrid instrument is exactly the wrong one.
+    /// </remarks>
+    public static MassAnalyzerClass DetectMs2Analyzer(MzMLFileInfo info)
+    {
+        if (info.AnalyzerByConfiguration.Count == 0) return MassAnalyzerClass.Unknown;
+
+        // One configuration means every spectrum used it, and no spectrum needs reading.
+        if (info.AnalyzerByConfiguration.Count == 1)
+        {
+            foreach (string accession in info.AnalyzerByConfiguration.Values)
+                return MassAnalyzers.Classify(accession);
+        }
+
+        foreach (SpectrumRecord record in ReadSpectra(info, msLevel: 2))
+        {
+            string? configuration = record.InstrumentConfigurationRef ?? info.DefaultConfiguration;
+            if (configuration is not null &&
+                info.AnalyzerByConfiguration.TryGetValue(configuration, out string? accession))
+            {
+                return MassAnalyzers.Classify(accession);
+            }
+
+            // The file has several configurations but this spectrum does not say which, so
+            // the header cannot settle it. Thermo's filter string can.
+            return MassAnalyzers.ClassifyFilterString(record.FilterString);
+        }
+
+        return MassAnalyzerClass.Unknown;
     }
 
     /// <summary>

@@ -31,8 +31,11 @@ public static class QcCommand
                       --prism-csv <path>     Skyline PRISM report CSV
                       --library <path>       .blib, report-lib.parquet, or PRISM .csv
                       --diann-report <path>  DIA-NN report.parquet
+                      --resolution <mode>    unit, hram or auto (default auto: read the
+                                             mass analyzer from the mzML and pick)
                       --tolerance <Th>       Fragment tolerance in Th (default 0.3)
-                      --tolerance-ppm <ppm>  Fragment tolerance in ppm
+                      --tolerance-ppm <ppm>  Fragment tolerance in ppm (default 10 on
+                                             high-resolution data)
                       --min-intensity <n>    Minimum peak intensity (default 500)
                       --max-isolation-window <Th>
                                              Skip wider isolation windows
@@ -61,11 +64,13 @@ public static class QcCommand
 
         var matchOptions = new MatchOptions
         {
-            MzToleranceTh = args.Double("tolerance") ?? 0.3,
+            MzToleranceTh = args.Double("tolerance") ?? ResolutionMode.DefaultToleranceTh,
             TolerancePpm = args.Double("tolerance-ppm") ?? 0,
             MinIntensity = args.Double("min-intensity") ?? 500.0,
             MaxIsolationWindowWidth = args.Double("max-isolation-window"),
         };
+
+        ResolutionMode resolution = ResolutionMode.Resolve(args, mzmlFiles, matchOptions, Log.Info);
 
         string reportPath = args.String("output") ?? "mars_qc_summary.txt";
         bool byFile = args.Flag("by-file");
@@ -73,10 +78,17 @@ public static class QcCommand
         string htmlReportPath = args.String("html-report") ?? DefaultHtmlPath(reportPath);
         string? temperatureDirectory = args.String("temperature-dir");
 
+        // Read before the check below rather than inside LoadLibrary, so that every option
+        // this command understands has been seen by the time the check runs.
+        var librarySource = LibrarySource.From(args);
+
+        // Everything is read; refuse a typo now rather than after minutes of work.
+        args.RejectUnknown();
+
         var runNames = new List<string>();
         foreach (string file in mzmlFiles) runNames.Add(Path.GetFileName(file));
 
-        SpectralLibrary library = LoadLibrary(args, runNames);
+        SpectralLibrary library = librarySource.Load(runNames, keepSequences: false, Log.Info);
         var stopwatch = Stopwatch.StartNew();
 
         var text = new StringBuilder();
@@ -170,7 +182,8 @@ public static class QcCommand
                     ? $"{matchOptions.TolerancePpm:0.##} ppm"
                     : $"{matchOptions.MzToleranceTh:0.###} Th",
                 MarsInfo.Version,
-                MarsStatistics.Summarize(combined.DeltaMz.Items.AsSpan(0, combined.Count)));
+                Uncorrected(combined, resolution),
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 
@@ -185,6 +198,25 @@ public static class QcCommand
         return string.IsNullOrEmpty(directory)
             ? "mars_qc_report.html"
             : Path.Combine(directory, "mars_qc_report.html");
+    }
+
+    /// <summary>
+    /// The measured error, summarized on the scale the report will be drawn in.
+    /// </summary>
+    private static ErrorSummary Uncorrected(MatchTable table, ResolutionMode resolution)
+    {
+        ReadOnlySpan<double> delta = table.DeltaMz.Items.AsSpan(0, table.Count);
+        if (!resolution.ReportInPpm) return MarsStatistics.Summarize(delta);
+
+        double[] fragmentMz = table.Column(MarsFeature.FragmentMz).Items;
+        var ppm = new double[table.Count];
+        for (int i = 0; i < ppm.Length; i++)
+        {
+            double mz = fragmentMz[i];
+            ppm[i] = mz > 0 ? delta[i] / mz * 1e6 : 0.0;
+        }
+
+        return MarsStatistics.Summarize(ppm);
     }
 
     /// <summary>
@@ -218,14 +250,9 @@ public static class QcCommand
         ReadOnlySpan<double> delta = table.DeltaMz.Items.AsSpan(start, count);
         ErrorSummary summary = MarsStatistics.Summarize(delta);
 
-        text.AppendLine($"  Matches: {summary.Count:N0}");
-        text.AppendLine($"  Mean delta m/z:   {summary.Mean:F4} Th");
-        text.AppendLine($"  Median delta m/z: {summary.Median:F4} Th");
-        text.AppendLine($"  Std delta m/z:    {summary.StdDev:F4} Th");
-        text.AppendLine($"  MAD delta m/z:    {summary.Mad:F4} Th");
-        text.AppendLine($"  RMS delta m/z:    {summary.Rms:F4} Th");
-
-        // ppm is the more portable scale, so report it alongside.
+        // Converted per row from that fragment's own m/z, not by dividing the aggregate by a
+        // nominal mass - the fragments here span most of a factor of four in m/z, so the
+        // shortcut would be wrong by about that much.
         double[] fragmentMz = table.Column(MarsFeature.FragmentMz).Items;
         var ppm = new double[count];
         for (var i = 0; i < count; i++)
@@ -234,29 +261,18 @@ public static class QcCommand
             ppm[i] = mz > 0 ? delta[i] / mz * 1e6 : 0.0;
         }
 
-        ErrorSummary ppmSummary = MarsStatistics.Summarize(ppm);
-        text.AppendLine($"  Median delta ppm: {ppmSummary.Median:F2} ppm");
-        text.AppendLine($"  Std delta ppm:    {ppmSummary.StdDev:F2} ppm");
+        ErrorSummary p = MarsStatistics.Summarize(ppm);
+
+        // Both scales, in the same layout calibrate uses. Th is what an ion trap is specified
+        // in; ppm is the scale a high-resolution instrument is specified in and the only one
+        // that compares across instruments.
+        text.AppendLine($"  Matches: {summary.Count:N0}");
+        text.AppendLine($"  Mean delta:   {summary.Mean,9:F4} Th   {p.Mean,8:F2} ppm");
+        text.AppendLine($"  Median delta: {summary.Median,9:F4} Th   {p.Median,8:F2} ppm");
+        text.AppendLine($"  Std delta:    {summary.StdDev,9:F4} Th   {p.StdDev,8:F2} ppm");
+        text.AppendLine($"  MAD delta:    {summary.Mad,9:F4} Th   {p.Mad,8:F2} ppm");
+        text.AppendLine($"  RMS delta:    {summary.Rms,9:F4} Th   {p.Rms,8:F2} ppm");
+        text.AppendLine($"  MAE delta:    {summary.Mae,9:F4} Th   {p.Mae,8:F2} ppm");
     }
 
-    private static SpectralLibrary LoadLibrary(CommandLineArgs args, List<string> runNames)
-    {
-        string? prismCsv = args.String("prism-csv");
-        string? libraryPath = args.String("library");
-        var options = new PrismLibraryOptions { RunNames = runNames };
-
-        if (prismCsv is not null) return PrismCsvLibraryReader.Load(prismCsv, options, Log.Info);
-        if (libraryPath is null)
-            throw new FileNotFoundException("A library is required: --prism-csv or --library.");
-
-        if (libraryPath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-            return PrismCsvLibraryReader.Load(libraryPath, options, Log.Info);
-        if (libraryPath.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase))
-            return DiannParquetLibraryReader.Load(libraryPath, args.String("diann-report"), runNames, Log.Info);
-        if (libraryPath.EndsWith(".blib", StringComparison.OrdinalIgnoreCase))
-            return BlibLibraryReader.Load(libraryPath, args.Double("rt-window") ?? 0.083, Log.Info);
-
-        throw new InvalidDataException(
-            $"Unrecognized library type '{Path.GetExtension(libraryPath)}'. Expected .blib, .parquet or .csv.");
-    }
 }

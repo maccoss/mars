@@ -5,6 +5,10 @@ Both `mars qc` and `mars calibrate` write two reports:
 - **`mars_qc_summary.txt`** - the numbers, for a pipeline or a quick look.
 - **`mars_qc_report.html`** - the same numbers plus the figures, as one self-contained file.
 
+Mass error is expressed in **Th on unit-resolution data and ppm on high-resolution data**,
+following whichever analyzer MARS read out of the mzML. Both scales appear in the summary
+tables regardless; see [Th and ppm](#th-and-ppm).
+
 `qc` runs before any model exists, so its report shows the error **as measured** and how it
 varies with each feature. `calibrate` shows the same figures with an after-correction
 overlay, plus an after-heatmap, feature importance and cross-validation. Everything below applies to both;
@@ -12,9 +16,40 @@ where they differ it says so.
 
 The HTML file has no scripts, no external references, and fetches nothing when opened.
 Everything is embedded, so it can be attached to an email and read by someone who has
-neither the data nor the tool. A 22-feature report is around 210 KB.
+neither the data nor the tool. A 22-feature report is around 550 KB.
 
 `--no-html-report` skips it; `--html-report <path>` moves it.
+
+## Th and ppm
+
+Every summary figure is reported on both scales, side by side:
+
+```
+  Mean delta:     -0.0005 Th      -0.85 ppm
+  Median delta:   -0.0009 Th      -1.53 ppm
+  Std delta:       0.0029 Th       4.62 ppm
+  MAD delta:       0.0014 Th       2.27 ppm
+  RMS delta:       0.0029 Th       4.68 ppm
+  MAE delta:       0.0022 Th       3.55 ppm
+```
+
+Both, because neither one is sufficient on its own. A trap is specified in Th and its error
+really is roughly constant in Th, so Th is the scale on which its performance is flat and
+comparable across the m/z range. A high-resolution analyzer is specified in ppm and its
+error is roughly constant in ppm, so on that instrument a Th figure is the one that drifts
+with m/z and cannot be compared to the vendor number. Reporting only one scale makes MARS
+look either wrong or arbitrary depending on which instrument wrote the file.
+
+The conversion is **per row, from each fragment's own m/z**, and then summarized - not the
+aggregate Th figure divided by some nominal mass. The distinction is not cosmetic: fragments
+in a plasma digest span most of a factor of four in m/z, so the shortcut would be off by
+about that factor at the ends of the range. It also means the ppm and Th columns are not
+rescalings of one another. Each is a summary of a different per-row quantity, and the ratio
+between them varies with the m/z distribution of whatever matched.
+
+Which one to read is a property of the instrument, not of the report. On the Stellar data
+below the interesting numbers are hundredths of a Th; on Astral data they are single-digit
+ppm.
 
 ## The verdict line
 
@@ -152,12 +187,16 @@ logs are worth using when you have them and not worth chasing when you do not.
 ## Error against each feature
 
 One figure per active feature, before and after correction side by side. Color is the
-**fragment count** per cell on a log scale - dark purple through green to yellow - and the
+**fragment count** per cell - dark purple through green to yellow - and the
 line over it is the **median error per column**.
 
 The count scale is viridis rather than a single-hue ramp because a monochrome ramp has one
 usable dimension and spends most of it on pale values, so the dense core and the sparse tail
-end up looking alike. Each panel is normalized to its own busiest cell: correcting
+end up looking alike. Counts map onto it as a power law (`count / peak` to the 0.4, as in
+matplotlib's `PowerNorm`) rather than linearly or logarithmically. Linear leaves one bright
+cell in a dark field, since the core of these densities runs orders of magnitude above the
+tails; a log overcorrects, pushing most of the core to the yellow end so that the structure
+inside it - the part worth looking at - washes out. Each panel is normalized to its own busiest cell: correcting
 concentrates the distribution, so on a shared scale the before panel would flatten to nearly
 empty and the structure that motivated the correction would vanish from the figure. Both
 panels do share one vertical range, because the after panel being visibly tighter is the

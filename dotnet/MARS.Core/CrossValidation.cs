@@ -93,16 +93,26 @@ public sealed class CrossValidationReport
     /// </remarks>
     public double OptimismMad => OutOfFold.Mad - InSample.Mad;
 
-    private double Spread(Func<FoldMetrics, double> select)
+    private double Spread(Func<FoldMetrics, double> select) => Spread(PerFold, select);
+
+    /// <summary>
+    /// Standard deviation across folds of one measurement.
+    /// </summary>
+    /// <remarks>
+    /// Public because a report drawn in ppm has to take the spread from the per-fold ppm
+    /// figures rather than converting the Th one: each fold converts at its own distribution
+    /// of fragment m/z, so a ppm spread is not a rescaling of a Th spread.
+    /// </remarks>
+    public static double Spread(FoldMetrics[] folds, Func<FoldMetrics, double> select)
     {
-        if (PerFold.Length < 2) return double.NaN;
+        if (folds.Length < 2) return double.NaN;
 
         double mean = 0;
-        foreach (FoldMetrics fold in PerFold) mean += select(fold);
-        mean /= PerFold.Length;
+        foreach (FoldMetrics fold in folds) mean += select(fold);
+        mean /= folds.Length;
 
         double sumSquares = 0;
-        foreach (FoldMetrics fold in PerFold)
+        foreach (FoldMetrics fold in folds)
         {
             double d = select(fold) - mean;
             sumSquares += d * d;
@@ -110,7 +120,7 @@ public sealed class CrossValidationReport
 
         // Sample standard deviation: the folds are a sample of the splits that could have
         // been drawn, not the population of them.
-        return Math.Sqrt(sumSquares / (PerFold.Length - 1));
+        return Math.Sqrt(sumSquares / (folds.Length - 1));
     }
 }
 

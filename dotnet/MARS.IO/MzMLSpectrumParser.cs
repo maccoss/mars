@@ -54,6 +54,7 @@ public sealed class ParsedSpectrum
 public static class MzMLSpectrumParser
 {
     public const string MsLevel = "MS:1000511";
+    public const string FilterString = "MS:1000512";
     public const string TotalIonCurrent = "MS:1000285";
     public const string ScanStartTime = "MS:1000016";
     public const string IonInjectionTime = "MS:1000927";
@@ -125,7 +126,12 @@ public static class MzMLSpectrumParser
                 case "spectrum":
                     record.Id = reader.GetAttribute("id") ?? string.Empty;
                     record.Index = ParseInt(reader.GetAttribute("index"));
+                    record.InstrumentConfigurationRef = reader.GetAttribute("instrumentConfigurationRef");
                     parsed.DefaultArrayLength = ParseInt(reader.GetAttribute("defaultArrayLength"));
+                    break;
+
+                case "scan":
+                    record.InstrumentConfigurationRef ??= reader.GetAttribute("instrumentConfigurationRef");
                     break;
 
                 case "isolationWindow":
@@ -181,6 +187,10 @@ public static class MzMLSpectrumParser
                     {
                         case MsLevel:
                             record.MsLevel = ParseInt(value);
+                            break;
+
+                        case FilterString:
+                            record.FilterString = value;
                             break;
 
                         case TotalIonCurrent:

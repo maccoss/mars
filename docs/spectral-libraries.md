@@ -156,12 +156,30 @@ worth having when the logs exist and not worth chasing when they do not.
 
 ## Choosing a tolerance
 
-| Instrument | Suggested |
-|---|---|
-| Stellar (ion trap) | `--tolerance 0.3` (Th, the default) |
-| Orbitrap, Astral | `--tolerance-ppm 10` |
+Usually you do not have to. MARS reads the mass analyzer out of the mzML and picks:
 
-An absolute tolerance on high-resolution data is far too wide: the most-intense-peak rule
-would routinely select a different ion. A ppm tolerance on ion-trap data is far too narrow to
-catch the error MARS exists to measure. `mars qc` reports the error in both Th and ppm, which
-is the quickest way to see whether the tolerance is sane before training anything.
+| Detected | Tolerance | QC report drawn in |
+|---|---|---|
+| Ion trap, quadrupole | 0.3 Th | Th |
+| Orbitrap, FT-ICR, TOF, Astral | 10 ppm | ppm |
+
+It says which in the log, on the line above the first match:
+
+```
+INFO   high-resolution data; fragment tolerance 10 ppm (--tolerance or --tolerance-ppm to override)
+```
+
+Override it with `--tolerance`, `--tolerance-ppm`, or `--resolution unit|hram` - see
+[the CLI reference](cli-reference.md#resolution-and-tolerance).
+
+**Why it matters more than it looks.** An absolute tolerance on high-resolution data is far
+too wide: 0.3 Th is about 430 ppm at m/z 700, so the window is two orders of magnitude wider
+than the error and the most-intense-peak rule routinely selects a different ion. A ppm
+tolerance on ion-trap data is far too narrow to catch the error MARS exists to measure.
+Neither mistake stops the run. Matching the Astral file below at 0.3 Th returns 3,414,802
+fragments rather than 1,408,902, and reports a standard deviation of 162 ppm against the
+4.1 ppm that is really there - a complete report, all of it meaningless. That failure being
+silent is why the analyzer is detected rather than documented.
+
+`mars qc` reports the error in both Th and ppm whichever scale it draws in, which is the
+quickest way to check the tolerance is sane before training anything.

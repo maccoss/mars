@@ -13,7 +13,7 @@ using MARS.IO;
 
 namespace MARS.Test;
 
-public static class SyntheticMzML
+public static partial class SyntheticMzML
 {
     /// <summary>
     /// Writes an indexed mzML shaped like pwiz output: an indexedmzML wrapper, Thermo
@@ -27,7 +27,8 @@ public static class SyntheticMzML
         BinaryArrayEncoding? mzEncoding = null,
         BinaryArrayEncoding? intensityEncoding = null,
         int seed = 12345,
-        int peaksPerSpectrum = 0)
+        int peaksPerSpectrum = 0,
+        MassAnalyzerLayout analyzers = MassAnalyzerLayout.None)
     {
         BinaryArrayEncoding mzArrayEncoding = mzEncoding ?? new BinaryArrayEncoding(true, true);
         BinaryArrayEncoding intensityArrayEncoding = intensityEncoding ?? new BinaryArrayEncoding(true, true);
@@ -51,10 +52,13 @@ public static class SyntheticMzML
                       <cvParam cvRef="MS" accession="MS:1000768" name="Thermo nativeID format" value=""/>
                     </sourceFile>
                   </sourceFileList>
-                </fileDescription>
-                <run id="synthetic" startTimeStamp="2024-12-03T04:05:54Z" defaultSourceFileRef="RAW1">
+                </fileDescription>INSTRUMENT_CONFIGURATION_LIST
+                <run id="synthetic" startTimeStamp="2024-12-03T04:05:54Z"DEFAULT_CONFIGURATION defaultSourceFileRef="RAW1">
 
             """.Replace("\r\n", "\n"));
+
+        body.Replace("INSTRUMENT_CONFIGURATION_LIST", InstrumentConfiguration(analyzers))
+            .Replace("DEFAULT_CONFIGURATION", DefaultConfigurationAttribute(analyzers));
 
         body.Append("      <spectrumList count=\"")
             .Append(spectrumCount.ToString(CultureInfo.InvariantCulture))
@@ -85,7 +89,9 @@ public static class SyntheticMzML
                 .Append("\" id=\"controllerType=0 controllerNumber=1 scan=")
                 .Append(scan.ToString(CultureInfo.InvariantCulture))
                 .Append("\" defaultArrayLength=\"").Append(peaks.ToString(CultureInfo.InvariantCulture))
-                .Append("\">\n");
+                .Append("\"")
+                .Append(Ms2ConfigurationReference(analyzers, msLevel))
+                .Append(">\n");
 
             body.Append("          <cvParam cvRef=\"MS\" accession=\"MS:1000511\" name=\"ms level\" value=\"")
                 .Append(msLevel.ToString(CultureInfo.InvariantCulture)).Append("\"/>\n");
