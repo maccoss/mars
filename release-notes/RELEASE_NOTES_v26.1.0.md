@@ -115,6 +115,14 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   mismatched peak is an accurate measurement of a different ion, and at three robust sigma
   Huber still leaves such a row 79% of its weight. It is the better choice when the tail
   is heavy but real rather than mislabelled.
+- **Verified on high-resolution data.** One 4.9 GB Orbitrap Astral run at `--tolerance-ppm 10`
+  against a 16.1 GB, 67-million-row Skyline report: 1,408,902 matched fragments over 81,184
+  peptides, seven minutes end to end. The correction is small and honestly reported as such -
+  5.6% off the median absolute error, mostly by removing a -1.5 ppm constant offset - and
+  cross-validation puts the in-sample and out-of-fold figures within 0.0000 Th of each other,
+  so the small gain is real rather than an artifact. Pearson r is 0.144 against 0.69 on
+  Stellar, which is the tool correctly reporting that a well-calibrated instrument leaves
+  little systematic error to find.
 ## Bug Fixes
 
 Four defects found while transcribing the Python implementation. Three affect files that

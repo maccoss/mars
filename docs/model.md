@@ -184,26 +184,33 @@ new objective: Huber's gradient is the residual clipped to the threshold,
 `clip(r, +/-d) = r * min(1, d/|r|)`, so squared error on weights `w * min(1, d/|r|)` produces
 exactly it. One extra pass of the existing path is a Huber fit.
 
-It measures slightly worse:
+Measured, with the fold-to-fold spread alongside so the differences can be read against the
+noise in them:
 
 | | 600-700 window | 400-500 window |
 |---|---|---|
 | `--robust none` | 0.0445 Th | 0.0523 Th |
-| `--robust trim` | **0.0442 Th** | **0.0505 Th** |
+| `--robust trim` | 0.0442 Th | 0.0505 Th |
 | `--robust huber` | 0.0443 Th | 0.0518 Th |
+| *fold-to-fold spread* | *0.0005 Th* | *0.0021 Th* |
 
-The reason is what the outliers are. Huber assumes an outlier is an extreme measurement of
-the right quantity, and softens it accordingly - at three robust sigma it still leaves such a
-row **79% of its weight on average**. But a mismatched peak is not an extreme measurement of
-the fragment's mass error; it is an accurate measurement of a *different ion*. Its label
-carries no information about the quantity being fitted, so leaving it four fifths of its
-influence is not enough. The difference shows up most on the data-poor 400-500 window, where
-there is less real signal to outvote it.
+Read carefully, this does **not** say Huber is worse. On the 600-700 window the two differ
+by 0.0001 Th, one part in four thousand - noise. On the 400-500 window trim is ahead by
+0.0013 Th, which is real enough to notice but still smaller than the 0.0021 Th spread between
+folds. Trim is the safer default on the evidence available; Huber is not refuted by it.
 
-`--robust huber` remains available, and is the better choice if the tail is heavy but real
-rather than mislabelled. The untried middle is a redescending weight - Tukey's biweight goes
-to exactly zero past a multiple of the threshold instead of decaying as `1/|r|` - which would
-soften the boundary while still eliminating the far tail.
+What the numbers do suggest is a mechanism worth remembering. Huber assumes an outlier is an
+extreme measurement of the *right* quantity and softens it in proportion - at three robust
+sigma it still leaves such a row **79% of its weight on average**. A mismatched peak is not
+an extreme measurement of the fragment's mass error; it is an accurate measurement of a
+*different ion*, and its label carries no information about the quantity being fitted. On the
+smaller, noisier window - where there is less real signal to outvote it - leaving four fifths
+of that influence in appears to cost something.
+
+That reasoning also predicts where Huber should do better: a larger cohort, where the
+contaminated rows are outnumbered and the cost of discarding real-but-extreme rows starts to
+matter more than the cost of keeping mislabelled ones. Worth revisiting on more data rather
+than treating the default as settled.
 
 > Do not reach for a tighter `--tolerance` instead. A wide window is a robustness property:
 > a faster ion-trap scan rate gives worse mass accuracy, and a tolerance tuned to one cohort
@@ -376,6 +383,43 @@ would say that any in-sample figure is not worth quoting.
 The before/after numbers everywhere else - the QC summary, the figures, the verdict line -
 use these out-of-fold predictions. No optimistic number is reported anywhere as though it
 were the result.
+
+### On high-resolution data
+
+The same machinery runs unchanged on Orbitrap Astral data with `--tolerance-ppm 10`, and the
+answer it gives there is worth reading because it is mostly "there is little to do":
+
+```
+1,408,902 matched fragments over 81,184 peptides, 5 folds
+
+  before                  MAD 0.0014 Th   std 0.0029 Th   median -0.0009 Th
+  after (these files)     MAD 0.0013 Th   std 0.0028 Th   median -0.0001 Th
+  expected on new data    MAD 0.0013 Th
+  gap                     0.0000 Th       fold spread 0.0000 Th
+  Pearson r               0.144
+```
+
+Three things to take from it.
+
+**The improvement is small and real.** 5.6% off the median absolute error, 1.2% off the
+spread. What the model mostly finds is a constant offset: the median error moves from
+-0.0009 Th to -0.0001 Th, about 89% of a -1.5 ppm bias at m/z 600 removed. The rest of the
+Astral error is not systematic in anything MARS measures.
+
+**Pearson r of 0.144, against 0.69 on Stellar.** That is the honest signal that there is
+little structure to find. On an ion trap the space-charge effects dominate and the model
+tracks them closely; on an Astral the instrument has already removed most of what is
+predictable, and what remains is close to random. A tool that reported a large improvement
+here would be describing noise.
+
+**The gap is zero.** With 1.4 million rows over 81 thousand peptides, in-sample and
+out-of-fold agree to four decimal places, and the folds agree with each other to four
+decimal places. So the small improvement is trustworthy, not an artifact - which is exactly
+the question cross-validation exists to answer, and the answer is more useful here than on
+data where the correction is obvious.
+
+The run takes about seven minutes end to end for one 4.9 GB file, of which a minute is
+reading the 16.1 GB, 67-million-row plate report.
 
 ### When there are too few peptides
 

@@ -23,6 +23,7 @@
 |---|---|
 | [python-parity.md](python-parity.md) | How the C# implementation is checked against the Python one row by row, what agrees, and what parity cannot cover. |
 | [dotnet-port-spec.md](dotnet-port-spec.md) | The specification governing the port: decisions, acceptance gates, measured results, and four defects the port found in the Python implementation. |
+| [open-questions.md](open-questions.md) | What was deliberately left undone, what was measured, and what would settle it. |
 
 ---
 
