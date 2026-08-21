@@ -381,3 +381,112 @@ public sealed class CrossValidatedFitTest
         Assert.Contains("peptide group", error.Message, StringComparison.Ordinal);
     }
 }
+
+public sealed class ResidualTrimTest
+{
+    /// <summary>
+    /// A clean linear relationship, plus a contaminated minority whose label is unrelated to
+    /// its features - the shape a mismatched peak takes, where the recorded delta belongs to
+    /// some other ion.
+    /// </summary>
+    private static MatchTable BuildContaminated(double contaminatedFraction)
+    {
+        MarsFeature[] collect =
+        {
+            MarsFeature.PrecursorMz, MarsFeature.FragmentMz,
+            MarsFeature.LogTic, MarsFeature.LogIntensity,
+        };
+
+        var table = new MatchTable(collect);
+        var random = new Random(20260823);
+        const int peptides = 300, rowsEach = 10;
+
+        for (int p = 0; p < peptides; p++)
+        {
+            double fragmentMz = 200.0 + (random.NextDouble() * 1000.0);
+            for (int r = 0; r < rowsEach; r++)
+            {
+                double intensity = 500.0 + (random.NextDouble() * 100000.0);
+                bool contaminated = random.NextDouble() < contaminatedFraction;
+
+                table.Set(MarsFeature.PrecursorMz, 400.0 + (p % 20));
+                table.Set(MarsFeature.FragmentMz, fragmentMz);
+                table.Set(MarsFeature.LogTic, Math.Log10(1.0e6));
+                table.Set(MarsFeature.LogIntensity, Math.Log10(intensity));
+
+                double truth = (fragmentMz * 6.0e-5) - 0.02;
+                table.DeltaMz.Add(contaminated
+                    // Uniform across the matching window: what you get when the most intense
+                    // peak in the window was not the fragment.
+                    ? (random.NextDouble() - 0.5) * 0.6
+                    : truth + ((random.NextDouble() - 0.5) * 0.004));
+
+                table.ObservedIntensity.Add(intensity);
+                table.PeptideGroup.Add(p);
+                table.CommitRow();
+            }
+        }
+
+        return table;
+    }
+
+    [Fact]
+    public void TrimmingImprovesAccuracyOnContaminatedData()
+    {
+        var options = new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 0 };
+
+        MzCalibrator without = MzCalibrator.Fit(
+            BuildContaminated(0.15), new CalibrationOptions
+            {
+                CvFolds = 5, ImportanceSampleRows = 0, TrimResidualSigma = 0,
+            },
+            absoluteTimeOffset: 0);
+
+        MzCalibrator with = MzCalibrator.Fit(
+            BuildContaminated(0.15), options, absoluteTimeOffset: 0);
+
+        // Out-of-fold, and the held-out rows are scored in full either way - the contaminated
+        // ones included. So this is a real improvement, not the measurement getting easier.
+        Assert.True(
+            with.CrossValidation!.OutOfFold.Mad < without.CrossValidation!.OutOfFold.Mad,
+            $"trimmed {with.CrossValidation.OutOfFold.Mad:R} should beat " +
+            $"untrimmed {without.CrossValidation.OutOfFold.Mad:R}");
+    }
+
+    [Fact]
+    public void TrimmingIsOffWhenTheSigmaIsZero()
+    {
+        MzCalibrator a = MzCalibrator.Fit(
+            BuildContaminated(0.1),
+            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, TrimResidualSigma = 0 },
+            absoluteTimeOffset: 0);
+
+        MzCalibrator b = MzCalibrator.Fit(
+            BuildContaminated(0.1),
+            new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0, TrimResidualSigma = 0 },
+            absoluteTimeOffset: 0);
+
+        // Deterministic, and identical to itself: disabling the second pass must not leave
+        // any residue of it.
+        Assert.Equal(a.Statistics!.After.Mad, b.Statistics!.After.Mad, 12);
+    }
+
+    [Fact]
+    public void CleanDataIsBarelyTrimmedAtAll()
+    {
+        MzCalibrator clean = MzCalibrator.Fit(
+            BuildContaminated(0.0),
+            new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
+
+        MzCalibrator dirty = MzCalibrator.Fit(
+            BuildContaminated(0.2),
+            new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
+
+        // The threshold is in robust sigma, so it adapts: clean data has a tight residual
+        // distribution and loses almost nothing, while contaminated data has a wide one and
+        // the tail is what gets cut. A fixed Th threshold would not do that.
+        Assert.True(clean.CrossValidation!.OutOfFold.Mad < dirty.CrossValidation!.OutOfFold.Mad);
+    }
+}

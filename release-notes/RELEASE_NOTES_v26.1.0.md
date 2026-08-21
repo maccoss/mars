@@ -99,6 +99,16 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   in-sample/out-of-fold gap. One held-out number says how the model did on one split;
   five say whether that number was luck.
 
+- **`--trim-sigma` (default 3) fits twice**, dropping training rows the first pass could not
+  explain. Matching takes the most intense peak in the tolerance window and sometimes that
+  peak is not the fragment; those rows carry a delta that is not a mass error, and squared
+  error lets them pull the fit. They are identifiable as a population - on the reference
+  Stellar run the 7.6% of rows with a residual beyond 0.15 Th are three times weaker, sit in
+  spectra with a quarter as many fragment ions, and are seven times more likely to lie
+  against the edge of the matching window. Removing them improves out-of-fold accuracy from
+  0.0445 to 0.0442 Th, and the improvement is flat from 2 to 3 sigma, which says it is
+  removing a contaminant rather than tuning against the folds. Only training rows are
+  trimmed; held-out rows are always scored in full. `--trim-sigma 0` disables it.
 ## Bug Fixes
 
 Four defects found while transcribing the Python implementation. Three affect files that

@@ -61,6 +61,7 @@ public static class CalibrateCommand
             Seed = args.Int("seed") ?? 42,
             ValidationSplit = args.Double("validation-split") ?? 0.2,
             CvFolds = args.Int("cv-folds") ?? 5,
+            TrimResidualSigma = args.Double("trim-sigma") ?? 3.0,
             MaxTrainingRows = args.Int("max-training-rows") ?? 0,
             MaxDegreeOfParallelism = args.Int("threads") ?? -1,
         };
@@ -387,6 +388,10 @@ public static class CalibrateCommand
                   --n-estimators <n>     Boosting rounds (default 100)
                   --max-depth <n>        Tree depth (default 6)
                   --learning-rate <x>    Shrinkage (default 0.1)
+                  --trim-sigma <x>       Fit, then refit without training rows whose
+                                         residual exceeds this many robust sigma (default
+                                         3). These are usually mismatched peaks, whose
+                                         delta is not a mass error. 0 disables the refit
                   --cv-folds <n>         Cross-validation folds, split by peptide
                                          (default 5). Does not change what gets applied:
                                          the correction model is fitted to all rows either

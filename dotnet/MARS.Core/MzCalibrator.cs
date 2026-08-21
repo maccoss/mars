@@ -74,6 +74,27 @@ public sealed class CalibrationOptions
 
     /// <summary>Rows sampled when estimating permutation importance. 0 disables it.</summary>
     public int ImportanceSampleRows { get; set; } = 50000;
+
+    /// <summary>
+    /// Fit once, then drop training rows whose residual exceeds this many robust standard
+    /// deviations and fit again. 0 disables the second pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Matching takes the most intense peak within the tolerance window, and sometimes that
+    /// peak is not the fragment. Those rows carry a delta that is not a mass error at all -
+    /// on the reference Stellar run they are three times weaker than the rest, sit in
+    /// spectra with a quarter as many fragment ions, and cluster against the edge of the
+    /// window - and squared error is exactly the loss that lets them pull the fit.
+    /// </para>
+    /// <para>
+    /// The threshold is in units of a MAD-derived sigma, so it adapts to the instrument
+    /// rather than assuming a Th value. Trimming applies to TRAINING rows only. Held-out
+    /// rows are always scored in full, or the reported accuracy would improve simply by
+    /// discarding the hard cases from the measurement.
+    /// </para>
+    /// </remarks>
+    public double TrimResidualSigma { get; set; } = 3.0;
 }
 
 public sealed class TrainingStatistics
@@ -314,9 +335,17 @@ public sealed class MzCalibrator
             $"Training on {trainIndex.Length:N0} rows, holding out {validationIndex.Length:N0} " +
             $"by peptide, {nFeat} features");
 
-        GradientBoostedTrees model = GradientBoostedTrees.Train(
-            Gather(x, trainIndex), Gather(y, trainIndex), gbtParams,
-            weights is null ? null : Gather(weights, trainIndex));
+        (GradientBoostedTrees model, int trimmed) = TrainTrimmed(
+            Gather(x, trainIndex), Gather(y, trainIndex),
+            weights is null ? null : Gather(weights, trainIndex), gbtParams,
+            options.TrimResidualSigma);
+
+        if (trimmed > 0)
+        {
+            log?.Invoke(
+                $"  refit without {trimmed:N0} unexplainable rows " +
+                $"({100.0 * trimmed / trainIndex.Length:F1}%)");
+        }
 
         var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
         TrainingStatistics statistics = calibrator.Evaluate(x, y, trainIndex, validationIndex, table.Count, options);
@@ -362,6 +391,7 @@ public sealed class MzCalibrator
         var models = new GradientBoostedTrees[options.CvFolds];
         var perFold = new FoldMetrics[options.CvFolds];
         var outOfFold = new double[x.Length];
+        int trimmedTotal = 0;
 
         for (int fold = 0; fold < options.CvFolds; fold++)
         {
@@ -376,9 +406,14 @@ public sealed class MzCalibrator
             int[] trainIndex = trainRows.ToArray();
             int[] heldOutIndex = heldOutRows.ToArray();
 
-            models[fold] = GradientBoostedTrees.Train(
-                Gather(x, trainIndex), Gather(y, trainIndex), gbtParams,
-                weights is null ? null : Gather(weights, trainIndex));
+            // Trim within the fold's own training rows. The held-out rows are scored in
+            // full: dropping the hard ones from the measurement as well would improve the
+            // reported number without improving anything real.
+            (models[fold], int foldTrimmed) = TrainTrimmed(
+                Gather(x, trainIndex), Gather(y, trainIndex),
+                weights is null ? null : Gather(weights, trainIndex), gbtParams,
+                options.TrimResidualSigma);
+            trimmedTotal += foldTrimmed;
 
             var heldOutObserved = new double[heldOutIndex.Length];
             var heldOutPredicted = new double[heldOutIndex.Length];
@@ -407,8 +442,23 @@ public sealed class MzCalibrator
         // withhold data from the surface being fitted. The fold models exist to answer a
         // different question, which is whether that surface is real structure or noise, and
         // what it would achieve on a run it was not fitted to.
+        if (trimmedTotal > 0)
+        {
+            log?.Invoke(
+                $"  folds refit without {trimmedTotal / options.CvFolds:N0} unexplainable rows " +
+                "each, on average");
+        }
+
         log?.Invoke($"  fitting the correction model on all {x.Length:N0} rows");
-        GradientBoostedTrees model = GradientBoostedTrees.Train(x, y, gbtParams, weights);
+        (GradientBoostedTrees model, int trimmed) = TrainTrimmed(
+            x, y, weights, gbtParams, options.TrimResidualSigma);
+
+        if (trimmed > 0)
+        {
+            log?.Invoke(
+                $"  refit without {trimmed:N0} unexplainable rows " +
+                $"({100.0 * trimmed / x.Length:F1}%)");
+        }
         var calibrator = new MzCalibrator(features, model, absoluteTimeOffset, options, null, null);
 
         var inSample = new double[x.Length];
@@ -435,6 +485,46 @@ public sealed class MzCalibrator
             calibrator.EvaluateCrossValidated(x, y, inSample, matchedRows, report, options);
 
         return new MzCalibrator(features, model, absoluteTimeOffset, options, statistics, report);
+    }
+
+    /// <summary>
+    /// Fits a model, then refits on the rows the first pass could explain.
+    /// </summary>
+    /// <returns>The model, and how many rows the second pass left out.</returns>
+    private static (GradientBoostedTrees Model, int Trimmed) TrainTrimmed(
+        double[][] x, double[] y, double[]? weights, GbtParams gbtParams, double sigma)
+    {
+        GradientBoostedTrees first = GradientBoostedTrees.Train(x, y, gbtParams, weights);
+        if (!(sigma > 0) || x.Length < 100) return (first, 0);
+
+        var residual = new double[x.Length];
+        for (int i = 0; i < x.Length; i++) residual[i] = y[i] - first.ScoreSingle(x[i]);
+
+        // A MAD-derived scale rather than a standard deviation: the outliers being looked for
+        // would inflate a standard deviation enough to hide themselves.
+        ErrorSummary summary = MarsStatistics.Summarize(residual);
+        double scale = summary.Mad * 1.4826;
+        if (!(scale > 0)) return (first, 0);
+
+        double limit = sigma * scale;
+        var keep = new List<int>(x.Length);
+        for (int i = 0; i < x.Length; i++)
+        {
+            if (Math.Abs(residual[i] - summary.Median) <= limit) keep.Add(i);
+        }
+
+        int trimmed = x.Length - keep.Count;
+
+        // Refitting on a much smaller set would be a different model rather than a cleaned
+        // one, so an unexpectedly aggressive trim is declined instead of applied.
+        if (trimmed == 0 || keep.Count < x.Length / 2) return (first, 0);
+
+        int[] kept = keep.ToArray();
+        return (
+            GradientBoostedTrees.Train(
+                Gather(x, kept), Gather(y, kept), gbtParams,
+                weights is null ? null : Gather(weights, kept)),
+            trimmed);
     }
 
     /// <summary>

@@ -132,6 +132,59 @@ which run to 10^5 and beyond, would make `reg_lambda = 1` a rounding error and
 `min_child_weight = 1` meaningless. Both implementations normalize to mean 1 for this
 reason.
 
+## Mismatched peaks, and the second pass
+
+Matching takes the most intense peak inside the tolerance window, and sometimes that peak is
+not the fragment. Those rows carry a delta that is not a mass error at all - it is the
+distance to whatever ion happened to be there - and squared error is exactly the loss that
+lets them pull the fit around.
+
+They are identifiable as a population. On the reference Stellar run, the 7.6% of rows with a
+residual beyond 0.15 Th are:
+
+| | core 92.4% | tail 7.6% |
+|---|---|---|
+| median peak intensity | 3,818 | **1,064** |
+| median fragment ions in the spectrum | 39.1 | **10.8** |
+| raw \|delta\| within 0.06 Th of the window edge | 4.8% | **34.9%** |
+
+Weak peaks, in sparse spectra, sitting against the edge of the matching window. That is what
+a wrong assignment looks like. The core alone has MAD 0.0389 Th and a near-Gaussian shape
+(std/MAD 1.56); including the tail the ratio is 1.95, which is the tail announcing itself.
+
+So MARS fits once, drops training rows whose residual exceeds `--trim-sigma` robust standard
+deviations, and fits again. Two details matter:
+
+- **The scale is derived from the median absolute deviation**, not the standard deviation.
+  The outliers being looked for would inflate a standard deviation enough to hide
+  themselves.
+- **Only training rows are trimmed.** Held-out rows are always scored in full. Dropping the
+  hard cases from the measurement as well would improve the reported number without
+  improving anything real.
+
+Measured out-of-fold, held-out rows scored in full:
+
+| `--trim-sigma` | out-of-fold MAD | rows trimmed |
+|---|---|---|
+| 0 (off) | 0.0445 Th | - |
+| 2 | 0.0442 Th | 11.5% |
+| 2.5 | 0.0442 Th | 6.4% |
+| 3 (default) | 0.0442 Th | 3.7% |
+| 4 | 0.0443 Th | 1.4% |
+
+A 0.7% improvement - small, but real, and notably **flat across the threshold**, which says
+it is removing a genuine contaminant rather than tuning against the fold. The default takes
+the full benefit while discarding the least data.
+
+The principled version of this is a robust loss - Huber rather than squared error - which
+would down-weight the tail continuously instead of cutting it. That belongs upstream in
+`Osprey.ML` and is not implemented yet.
+
+> Do not reach for a tighter `--tolerance` instead. A wide window is a robustness property:
+> a faster ion-trap scan rate gives worse mass accuracy, and a tolerance tuned to one cohort
+> would silently under-match those runs. The window should stay wide enough for the worst
+> instrument you intend to support, and the contaminated rows dealt with afterwards.
+
 ## Which features the model gets
 
 Not a fixed list. The feature set is chosen from what the data actually supports:
