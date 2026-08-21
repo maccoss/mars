@@ -139,6 +139,47 @@ public sealed class MzCalibrator
     public double PredictDelta(double[] featureRow) => Model.ScoreSingle(featureRow);
 
     /// <summary>
+    /// Predicted mass error for every row of a match table, parallel to the table's rows.
+    /// A row with any undefined feature scores NaN rather than being silently dropped, so
+    /// the result lines up with the table and with a dump of it.
+    /// </summary>
+    /// <remarks>
+    /// This exists so the learned function can be compared against another implementation
+    /// on identical rows. Comparing two boosting implementations tree by tree is not
+    /// meaningful; comparing what they predict for the same input is.
+    /// </remarks>
+    public double[] PredictAll(MatchTable table)
+    {
+        int featureCount = Features.Count;
+        var columns = new double[featureCount][];
+        for (int j = 0; j < featureCount; j++)
+            columns[j] = table.Column(Features.Features[j]).Items;
+
+        var predictions = new double[table.Count];
+        var row = new double[featureCount];
+
+        for (int i = 0; i < table.Count; i++)
+        {
+            bool usable = true;
+            for (int j = 0; j < featureCount; j++)
+            {
+                double value = columns[j][i];
+                if (double.IsNaN(value))
+                {
+                    usable = false;
+                    break;
+                }
+
+                row[j] = value;
+            }
+
+            predictions[i] = usable ? Model.ScoreSingle(row) : double.NaN;
+        }
+
+        return predictions;
+    }
+
+    /// <summary>
     /// Fits a calibrator on matched fragments.
     /// </summary>
     /// <param name="table">Matched fragments, one row per library fragment matched to a peak.</param>

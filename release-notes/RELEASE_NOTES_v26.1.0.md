@@ -1,7 +1,12 @@
-# MARS .NET vNEXT Release Notes
+# MARS v26.1.0 Release Notes
 
-First release of the C# implementation of MARS: the same recalibration, as a
-cross-platform CLI with no Python installation.
+MARS is now a self-contained, cross-platform command-line tool. This is the first
+release of the C# implementation, which is MARS going forward. The Python
+implementation is frozen to bug fixes and will be archived once the C# one has been
+used in earnest; it is no longer published to PyPI.
+
+Versions from here follow `YY.feature.patch`, so this is the first feature release of
+2026 rather than a continuation of the Python package's `0.1.x` line.
 
 ## New Features
 
@@ -48,6 +53,10 @@ cross-platform CLI with no Python installation.
 
 Four defects found while transcribing the Python implementation. Three affect files that
 have already been written.
+
+- **`mars.__version__` reported a version that never shipped.** `mars/__init__.py`
+  declared `0.1.4` while `pyproject.toml` and the CLI both said `0.1.5`. All three now read
+  the installed distribution metadata, so there is one source of truth. Python package only.
 
 - **The `fileChecksum` written by the Python implementation is invalid.** It stops the SHA-1
   two bytes early, before the indentation preceding `<fileChecksum>`, where the mzML

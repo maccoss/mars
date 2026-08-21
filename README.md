@@ -1,7 +1,9 @@
 # MARS: Mass Accuracy Recalibration System
 
-[![License](https://img.shields.io/pypi/l/mars-ms.svg)](https://github.com/maccoss/mars/blob/main/LICENSE)
-[![PyPI version](https://img.shields.io/pypi/v/mars-ms.svg)](https://pypi.org/project/mars-ms/)
+[![Build](https://github.com/maccoss/mars/actions/workflows/dotnet.yml/badge.svg)](https://github.com/maccoss/mars/actions/workflows/dotnet.yml)
+[![Release](https://img.shields.io/github/v/release/maccoss/mars?display_name=tag&sort=semver&label=release)](https://github.com/maccoss/mars/releases/latest)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/download)
+[![License](https://img.shields.io/github/license/maccoss/mars)](https://github.com/maccoss/mars/blob/main/LICENSE)
 
 Learns the systematic part of a mass spectrometer's m/z error from spectral library
 matches, and subtracts it from every peak in the file.
@@ -20,20 +22,25 @@ well-calibrated Astral run the same pipeline moves the spread by under 2% - ther
 little systematic error left to remove. **Run `mars qc` first** to see whether your data
 has anything worth correcting.
 
-## Two implementations
+## About the Python implementation
 
-| | C# (`mars`) | Python (`mars-ms`) |
-|---|---|---|
-| Platforms | Windows, Linux, macOS | any with Python 3.10+ |
-| Install | one binary, or the .NET runtime | `pip install mars-ms` |
-| Docs | this page | [README-python.md](README-python.md) |
+MARS began as a Python package (`mars-ms`, versions `0.1.x`). **The C# tool documented
+here is MARS going forward.** The Python implementation is frozen to bug fixes, is no
+longer published to PyPI, and will be archived once the C# one has been used in earnest.
+Its documentation is preserved in [README-python.md](README-python.md).
 
-They produce statistically equivalent corrections. The C# implementation additionally
-fixes four defects found while porting - including an invalid SHA-1 checksum on every
-file the Python implementation writes - documented in
+The C# implementation is not a rewrite that hopes to behave the same. Fragment matching
+and every model feature were verified against the Python implementation row by row: across
+160,947 matched fragments from two Stellar runs, all 24 shared columns agree with a maximum
+absolute difference of **zero**. See [docs/python-parity.md](docs/python-parity.md).
+
+Where they deliberately differ, it is because the port found four defects in the Python
+implementation - including an invalid SHA-1 checksum on every mzML it has ever written.
+Those are listed in
 [docs/dotnet-port-spec.md](docs/dotnet-port-spec.md#10a-defects-found-in-the-python-implementation).
 
-The rest of this page covers the C# implementation.
+Versions follow `YY.feature.patch` starting at `26.1.0`; the `0.1.x` line was the Python
+package. See [release-notes/README.md](release-notes/README.md).
 
 ---
 

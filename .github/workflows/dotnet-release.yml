@@ -1,16 +1,16 @@
 name: .NET Release
 
-# Pushing a dotnet-v* tag builds every platform artifact and creates the GitHub Release.
+# Pushing a v* tag builds every platform artifact and creates the GitHub Release.
 # Do not hand-create the Release: the notes file is published verbatim as the body, and
 # this workflow is what guarantees the tag, the assembly version and the notes agree.
 on:
   push:
     tags:
-      - 'dotnet-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build, without the dotnet-v prefix (e.g. 26.1.0). Builds artifacts only, creates no Release.'
+        description: 'Version to build, without the v prefix (e.g. 26.1.0). Builds artifacts only, creates no Release.'
         required: true
 
 permissions:
@@ -34,10 +34,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             version="${{ github.event.inputs.version }}"
           else
-            version="${GITHUB_REF_NAME#dotnet-v}"
+            version="${GITHUB_REF_NAME#v}"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=dotnet-v$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "Releasing version $version"
 
       - name: Assembly version must match the tag
@@ -56,7 +56,7 @@ jobs:
         run: |
           notes="release-notes/RELEASE_NOTES_${{ steps.resolve.outputs.tag }}.md"
           if [ ! -f "$notes" ]; then
-            echo "::error::$notes is missing. Rename RELEASE_NOTES_dotnet-next.md to it before tagging; it is published verbatim as the Release description."
+            echo "::error::$notes is missing. Rename RELEASE_NOTES_next.md to it before tagging; it is published verbatim as the Release description."
             exit 1
           fi
           # A renamed draft always arrives carrying the headings nobody filled in, and this
@@ -189,7 +189,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: MARS .NET ${{ needs.preflight.outputs.version }}
+          name: MARS ${{ needs.preflight.outputs.version }}
           body_path: release-notes/RELEASE_NOTES_${{ needs.preflight.outputs.tag }}.md
           files: |
             artifacts/*.tar.gz

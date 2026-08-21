@@ -30,10 +30,17 @@ public static class MatchDumpWriter
         "delta_mz", "observed_intensity",
     };
 
+    /// <param name="predictions">
+    /// Optional per-row model predictions, parallel to the table's rows. When supplied,
+    /// two more columns are written: the predicted correction and the residual left after
+    /// applying it. This is what makes the dump comparable against another
+    /// implementation's model rather than only its features.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// The table was built without detail columns, so its rows cannot be identified.
     /// </exception>
-    public static void Write(string path, MatchTable table, SpectralLibrary library)
+    public static void Write(
+        string path, MatchTable table, SpectralLibrary library, double[]? predictions = null)
     {
         if (!table.KeepDetail)
         {
@@ -64,6 +71,8 @@ public static class MatchDumpWriter
             line.Append(',');
             line.Append(MarsFeatures.NameOf(feature));
         }
+
+        if (predictions is not null) line.Append(",predicted_delta_mz,residual");
 
         writer.WriteLine(line.ToString());
 
@@ -98,6 +107,12 @@ public static class MatchDumpWriter
 
             foreach (MarsFeature feature in table.Collected)
                 Append(line, table.Column(feature).Items[row]);
+
+            if (predictions is not null)
+            {
+                Append(line, predictions[row]);
+                Append(line, deltaMz[row] - predictions[row]);
+            }
 
             writer.WriteLine(line.ToString());
         }

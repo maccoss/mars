@@ -1,16 +1,19 @@
 # MARS: the Python implementation
 
+> [!NOTE]
+> **This documents the frozen Python implementation.** MARS is now the C# tool; see the
+> [main README](README.md). The Python package is bug-fix only, is no longer published to
+> PyPI, and will be archived once the C# implementation has been used in earnest. It is
+> kept here so existing users can still read how it works, and because its output is the
+> reference the C# implementation is verified against
+> ([docs/python-parity.md](docs/python-parity.md)).
+
 [![PyPI version](https://img.shields.io/pypi/v/mars-ms.svg)](https://pypi.org/project/mars-ms/)
 [![Python versions](https://img.shields.io/pypi/pyversions/mars-ms.svg)](https://pypi.org/project/mars-ms/)
 [![License](https://img.shields.io/pypi/l/mars-ms.svg)](https://github.com/maccoss/mars/blob/main/LICENSE)
 
 Mass recalibration tool for DIA mass spectrometry data from the ThermoFisher Stellar.
 
-> **This page documents the Python implementation** (`mars-ms` on PyPI). There is also a
-> C# implementation that runs on Windows, Linux and macOS without a Python install - see
-> the [main README](README.md). The two are released independently and produce
-> statistically equivalent corrections; the C# one additionally fixes several defects
-> documented in [docs/dotnet-port-spec.md](docs/dotnet-port-spec.md#10a-defects-found-in-the-python-implementation).
 
 ## Overview
 
@@ -38,13 +41,15 @@ Mars learns m/z calibration corrections from spectral library fragment matches. 
 
 ## Installation
 
-### From PyPI (recommended)
+### From PyPI
+
+The last version published was `0.1.5`. No further releases will be made.
 
 ```bash
 pip install mars-ms
 ```
 
-### From source
+### From source (recommended, since it is the only way to get bug fixes)
 
 ```bash
 git clone https://github.com/maccoss/mars.git

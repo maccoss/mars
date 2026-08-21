@@ -38,6 +38,8 @@ public static class CalibrateCommand
         string modelPath = args.String("model-path") ?? Path.Combine(outputDirectory, "mars_model.json");
         string reportPath = args.String("report") ?? Path.Combine(outputDirectory, "mars_qc_summary.txt");
         string? dumpMatchesPath = args.String("dump-matches");
+        string? dumpPredictionsPath = args.String("dump-predictions");
+        bool keepDetail = dumpMatchesPath is not null || dumpPredictionsPath is not null;
 
         var matchOptions = new MatchOptions
         {
@@ -76,7 +78,7 @@ public static class CalibrateCommand
         var runNames = new List<string>();
         foreach (string file in mzmlFiles) runNames.Add(Path.GetFileName(file));
 
-        SpectralLibrary library = LoadLibrary(args, runNames, keepSequences: dumpMatchesPath is not null);
+        SpectralLibrary library = LoadLibrary(args, runNames, keepSequences: keepDetail);
 
         // ---- Pass 1: match fragments across every input file -------------------------
         var temperatureByFile = new Dictionary<string, TemperatureSet>(StringComparer.OrdinalIgnoreCase);
@@ -104,7 +106,7 @@ public static class CalibrateCommand
             Log.Warn("No ion injection time in the first MS2 spectrum; the injection-time feature group is off.");
 
         MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
-        var table = new MatchTable(collect, keepDetail: dumpMatchesPath is not null);
+        var table = new MatchTable(collect, keepDetail: keepDetail);
         var matcher = new FragmentMatcher(library, matchOptions);
 
         foreach (string file in mzmlFiles)
@@ -174,6 +176,13 @@ public static class CalibrateCommand
                  $"({PercentReduction(stats.Before.StdDev, stats.After.StdDev):F1}% reduction)");
         Log.Info($"  delta m/z MAD {stats.Before.Mad:F4} -> {stats.After.Mad:F4} Th " +
                  $"({PercentReduction(stats.Before.Mad, stats.After.Mad):F1}% reduction)");
+
+        if (dumpPredictionsPath is not null)
+        {
+            double[] predictions = calibrator.PredictAll(table);
+            MatchDumpWriter.Write(dumpPredictionsPath, table, library, predictions);
+            Log.Info($"Wrote {table.Count:N0} predictions to {dumpPredictionsPath}");
+        }
 
         MarsModelIo.Save(calibrator, modelPath);
         Log.Info($"Saved model to {modelPath}");
@@ -324,6 +333,10 @@ public static class CalibrateCommand
                   --dump-matches <path>  Write every matched fragment to CSV, one row per
                                          match, with all computed features. Diagnostic;
                                          a large cohort produces millions of rows
+                  --dump-predictions <path>
+                                         As --dump-matches, plus the model's predicted
+                                         correction and the residual, written after
+                                         training
                   --no-recalibrate       Train and report only; write no mzML
                   --on-reorder <mode>    clamp (default), revert, or allow, when a
                                          correction would break ascending m/z order

@@ -1,10 +1,23 @@
 name: Tests
 
+# The Python implementation is frozen to bug fixes and will be archived once the C# one
+# has been used in earnest, but while the code is here its tests still run. Scoped to the
+# Python tree so a C#-only change does not trigger them.
 on:
   push:
     branches: [main]
+    paths:
+      - 'mars/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/tests.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'mars/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/tests.yml'
 
 jobs:
   test:
