@@ -388,8 +388,11 @@ public static class CalibrateCommand
                   --max-depth <n>        Tree depth (default 6)
                   --learning-rate <x>    Shrinkage (default 0.1)
                   --cv-folds <n>         Cross-validation folds, split by peptide
-                                         (default 5). The model becomes the ensemble of
-                                         the folds. 0 trains a single model instead
+                                         (default 5). The folds are merged into one model
+                                         that predicts what averaging them would, so
+                                         correcting costs <n> times as much. 0 trains a
+                                         single model instead, and reports an in-sample
+                                         accuracy rather than an honest one
                   --validation-split <x> Held-out fraction for --cv-folds 0 (default 0.2)
                   --max-training-rows <n>
                                          Cap training rows by even stride (default no cap)
