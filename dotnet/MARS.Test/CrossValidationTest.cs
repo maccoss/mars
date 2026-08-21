@@ -6,6 +6,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Linq;
 using MARS.Core;
+using pwiz.Osprey.ML;
 using Xunit;
 
 namespace MARS.Test;
@@ -362,5 +363,114 @@ public sealed class CrossValidatedFitTest
             () => MzCalibrator.Fit(table, new CalibrationOptions(), absoluteTimeOffset: 0));
 
         Assert.Contains("peptide group", error.Message, StringComparison.Ordinal);
+    }
+}
+
+public sealed class EnsembleMergeTest
+{
+    private static MatchTable BuildMatches(int peptides = 120, int rowsEach = 10)
+    {
+        MarsFeature[] collect =
+        {
+            MarsFeature.PrecursorMz, MarsFeature.FragmentMz,
+            MarsFeature.LogTic, MarsFeature.LogIntensity,
+        };
+
+        var table = new MatchTable(collect);
+        var random = new Random(20260822);
+
+        for (int p = 0; p < peptides; p++)
+        {
+            double fragmentMz = 200.0 + (random.NextDouble() * 1000.0);
+            for (int r = 0; r < rowsEach; r++)
+            {
+                double intensity = 500.0 + (random.NextDouble() * 100000.0);
+                table.Set(MarsFeature.PrecursorMz, 400.0 + (p % 20));
+                table.Set(MarsFeature.FragmentMz, fragmentMz);
+                table.Set(MarsFeature.LogTic, Math.Log10(1.0e6));
+                table.Set(MarsFeature.LogIntensity, Math.Log10(intensity));
+                table.DeltaMz.Add((fragmentMz * 2.0e-5) - 0.01 + ((random.NextDouble() - 0.5) * 0.004));
+                table.ObservedIntensity.Add(intensity);
+                table.PeptideGroup.Add(p);
+                table.CommitRow();
+            }
+        }
+
+        return table;
+    }
+
+    [Fact]
+    public void MergedModelPredictsExactlyWhatAveragingTheFoldsPredicts()
+    {
+        MzCalibrator calibrator = MzCalibrator.Fit(
+            BuildMatches(), new CalibrationOptions { CvFolds = 5, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
+
+        Assert.Equal(5, calibrator.Models.Count);
+        GradientBoostedTrees merged = EnsembleMerge.Merge(calibrator.Models);
+
+        var random = new Random(11);
+        for (int trial = 0; trial < 200; trial++)
+        {
+            var row = new double[calibrator.Features.Count];
+            for (int i = 0; i < row.Length; i++) row[i] = random.NextDouble() * 1200.0;
+
+            // Not "close": identical. Averaging leaf values reproduces averaging predictions
+            // exactly, because a boosted ensemble's score is linear in its trees.
+            Assert.Equal(calibrator.PredictDelta(row), merged.ScoreSingle(row), 12);
+        }
+    }
+
+    [Fact]
+    public void MergedModelHoldsEveryTreeFromEveryFold()
+    {
+        MzCalibrator calibrator = MzCalibrator.Fit(
+            BuildMatches(), new CalibrationOptions { CvFolds = 5, NEstimators = 20, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
+
+        GradientBoostedTrees merged = EnsembleMerge.Merge(calibrator.Models);
+
+        // The trees add up, which is exactly why merging does not make scoring cheaper.
+        int foldTrees = 0;
+        foreach (GradientBoostedTrees model in calibrator.Models)
+            foldTrees += model.ToModelData().TreeRoot.Length;
+
+        Assert.Equal(foldTrees, merged.ToModelData().TreeRoot.Length);
+    }
+
+    [Fact]
+    public void MergingOneModelReturnsItUnchanged()
+    {
+        MzCalibrator calibrator = MzCalibrator.Fit(
+            BuildMatches(), new CalibrationOptions { CvFolds = 0, ImportanceSampleRows = 0 },
+            absoluteTimeOffset: 0);
+
+        Assert.Same(calibrator.Models[0], EnsembleMerge.Merge(calibrator.Models));
+    }
+
+    [Fact]
+    public void RefusesModelsThatDisagreeOnShape()
+    {
+        static GradientBoostedTrees Stub(int featureCount) => GradientBoostedTrees.FromModelData(
+            new GbtModelData
+            {
+                BaseScore = 0,
+                FeatureCount = featureCount,
+                Objective = GbtObjective.SquaredError,
+                Feature = new[] { -1 },
+                Threshold = new[] { 0.0 },
+                Left = new[] { -1 },
+                Right = new[] { -1 },
+                Leaf = new[] { 0.5 },
+                TreeRoot = new[] { 0 },
+            });
+
+        // Averaging models built over different feature vectors would silently score rows
+        // against the wrong columns, so it is refused rather than attempted.
+        Assert.Throws<ArgumentException>(
+            () => EnsembleMerge.Merge(new[] { Stub(4), Stub(5) }));
+
+        Assert.Throws<ArgumentException>(
+            () => EnsembleMerge.Merge(Array.Empty<GradientBoostedTrees>()));
     }
 }
