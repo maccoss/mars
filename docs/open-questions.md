@@ -167,29 +167,80 @@ MARS's CI and release build would have to carry deliberately.
 **The port is a draft at 85% semantic parity** with C++ msconvert (359 of 421 comparable
 files identical), with the remaining differences documented as mostly not port defects.
 
-### The real question is the writer, not the reader
+### The writer, measured
 
-MARS's output guarantee is the [byte-splice passthrough](mzml-passthrough.md): the corrected
-file is the input, byte for byte, except the m/z arrays actually changed. That guarantee
-exists because two serializer round-trips in the Python implementation produced valid mzML
-that broke DIA-NN and SeeMS.
+MARS's output guarantee is the [byte-splice passthrough](mzml-passthrough.md), and reading
+RAW removes the input that splice is made against. The concern that motivated the splice was
+serializer damage: two round-trips in the Python implementation produced valid mzML that broke
+DIA-NN and SeeMS. That concern does **not** transfer to pwiz. Those round-trips were psims and
+lxml; the mzML MARS reads was written by msconvert, so writing with pwiz-sharp regenerates a
+file with the same lineage rather than introducing a foreign serializer. Handing the format
+code to the people who maintain the format is the point.
 
-Reading RAW removes the input the splice is made against. `RAW -> MARS -> mzML` means MARS
-*generates* mzML, and the guarantee weakens from "identical by construction" to "our writer is
-as good as msconvert's" - which is a far larger surface, and one pwiz-sharp is still
-reconciling. Training from RAW and applying to an msconvert mzML keeps the guarantee but
-keeps the conversion too, so it buys nothing.
+Measured, on `Ste-2024-12-02_HeLa_20msIIT_GPFDIA_600-700_16`, applying the same model through
+a `SpectrumListWrapper` and writing with `MSDataFile.Write`, then diffing against MARS's own
+byte-splice output with `mars compare`:
 
-That makes this a strategic choice rather than an incremental feature: RAW in and mzML out
-turns MARS into a converter.
+```
+spectra compared      114,021
+peaks compared        82,349,582
+m/z values differing  0
+max |delta m/z|       0 Th
+intensity differing   0
+```
 
-### Recommendation
+**Numerically identical.** That settles the two things worth settling: the adapter from pwiz's
+`Spectrum` to MARS's `SpectrumRecord` feeds the model the same values the native reader does,
+and the writer round-trips them without loss.
 
-Start with **`mars qc` accepting `.raw`**. `qc` writes no mzML, so it takes on the reader and
-none of the writer risk, and it answers a question worth answering before a conversion rather
-than after: is there enough systematic error in this run to be worth calibrating? Behind that,
-decide `calibrate --raw` separately, once the reader has been used in earnest and PR #4178 has
-landed.
+### What the writer costs
 
-Reproduce with the probe under `scratchpad/rawprobe` - `Program.cs` for the field dump,
-`Parallel.cs` for the thread scaling.
+| Output | Size | Wall | Input |
+|---|---:|---:|---|
+| mzML (byte-splice, for reference) | 1.906 GB | - | 1.471 GB |
+| mzML (pwiz) | 1.916 GB | 337 s | 1.471 GB |
+| mzXML (pwiz) | 0.983 GB | 226 s | 1.216 GB |
+| mzMLb (pwiz) | 0.557 GB | 213 s | 1.216 GB |
+
+Both mzML writers inflate relative to the input, which is expected: correcting m/z makes the
+arrays less compressible than the smooth originals. pwiz lands within 0.56% of the splice.
+mzMLb is less than half the input, which is an argument for it on its own.
+
+Two things to get right:
+
+**Match the encoding explicitly.** `BinaryEncoderConfig` defaults to 64-bit *uncompressed*,
+which inflated the first attempt by 61%. The input is 64-bit zlib for both arrays, and setting
+that recovers the size. Note the shape difference: MARS's splice reads encoding **per array**,
+because m/z is often 64-bit where intensity is 32-bit and compression can differ between two
+arrays of one spectrum. pwiz's config is global, with per-array overrides keyed by CVID - so
+the common case is expressible, but a file whose encoding varies spectrum to spectrum is not.
+
+**The write path is sequential and that is the real cost.** MARS's byte-splice writer is
+parallel and writes 8.4 GB across five files in 123 s; the pwiz spike reads, corrects and
+writes one file in 337 s single-threaded. pwiz's `ISpectrumList` is random-access so the work
+parallelizes in principle, but `MSDataFile.Write` pulls spectra sequentially. Closing that gap
+is the main engineering cost of the move, and it is a throughput problem rather than a
+correctness one.
+
+### Decision
+
+**Adopt the pwiz writer.** It buys mzXML and mzMLb now (mz5 has no writer class yet; mzMLb has
+one and is dispatched from the path-shaped `Write` overload, not the stream-shaped one), it
+puts the format code with the people who maintain the format, and it produces byte-for-byte
+equivalent numbers on real data.
+
+Staging, smallest dependency first:
+
+1. **Writer only, mzML in.** Needs `Util`, `Common` and `MsData` - no vendor projects, so no
+   native Waters DLL. `SpectrumListWrapper` lives in `Analysis`, so either take that reference
+   or derive from `SpectrumListBase` in `MsData` to keep the dependency to three projects.
+2. **Parallelize the write**, to close the throughput gap against the splice.
+3. **RAW input**, which adds the vendor chain and its Windows-only transitive DLL.
+
+Keep the byte-splice path for mzML in and mzML out until 2 lands, then decide whether to
+retire it on the evidence rather than in advance. Note that mzMLb output on `linux-arm64` and
+`osx-arm64` needs checking: `HDF.PInvoke.1.10` bundles native libhdf5 for Windows and Linux
+**x64**, and MARS ships arm64 artifacts.
+
+Reproduce with the probes under `scratchpad/` - `rawprobe` for the reader, `pwizwrite` for the
+wrapper and writer.
