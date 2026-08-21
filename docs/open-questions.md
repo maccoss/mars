@@ -109,3 +109,87 @@ directly would avoid both the side effects and the startup cost.
 Raised by the Copilot review on PR #9 and **not applied**: the Python implementation is
 frozen to bug fixes, and startup cost is not a bug. Worth doing only if that track is
 unfrozen; if it is retired as planned, this closes with it.
+
+## Reading vendor RAW directly, via pwiz-sharp
+
+**Measured, decision pending.** [ProteoWizard PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178)
+ports the ProteoWizard core to .NET 8, including the Thermo `.raw` reader and the mzML
+writer. If MARS used it, the workflow would go from `RAW -> msconvert -> mzML -> MARS` to
+`RAW -> MARS`.
+
+### What was tried
+
+A shallow sparse clone of `chambem2/pwiz-sharp` (44 MB), building
+`pwiz/src/Vendor/Thermo/Thermo.csproj` with `-p:IAgreeToVendorLicenses=true`, then a throwaway
+probe against a 4.9 GB Astral run (`Ast_20240220_S10_26.raw`, 121,290 spectra).
+
+**It works, and it gives MARS everything it needs.** Every field the matcher reads is present
+on the pwiz `Spectrum`: ms level, scan start time, ion injection time, isolation window target
+with lower and upper offsets, total ion current, the Thermo filter string, and the m/z and
+intensity arrays. Injection time and isolation window were present on 120,327 of 120,327 MS2
+spectra. Opening the file costs 1.6 s, because the reader is lazy and only the header is read.
+
+The run declares **two instrument configurations** - `IC1` quadrupole + orbitrap, `IC2`
+quadrupole + Astral analyzer - which is the same hybrid layout the mzML analyzer detection
+handles, reached the same way. Detection would carry over to RAW input unchanged.
+
+### What argues against it
+
+**Reading RAW is not faster, and does not thread.** Full read with binary data:
+
+| Threads | Wall | Throughput |
+|---:|---:|---:|
+| 1 | 85.8 s | 3.38 M peaks/s |
+| 2 | 108.5 s | 2.67 M peaks/s |
+| 4 | 72.5 s | 4.00 M peaks/s |
+| 8 | 72.5 s | 4.00 M peaks/s |
+| 12 | 72.9 s | 3.98 M peaks/s |
+
+Flat from four threads on, with one reader handle per worker and striped indices. For scale,
+MARS's whole match pass over a comparable Astral mzML is 41 s - a different acquisition, so
+not a like-for-like comparison, but enough to say RAW reading is not the faster path. The win
+would be removing the conversion and its ~5 GB intermediate, not the read itself.
+
+**A Thermo-only build drags a native Windows DLL.** `Thermo.csproj` references
+`Analysis.csproj`, which references `Waters.csproj`, which stages `MassLynxRaw.dll` - a
+Windows x86-64 native PE - into the output. Nothing in the Thermo reader touches Waters, so
+this looks vestigial upstream, but MARS ships `linux-x64`, `linux-arm64`, `osx-arm64` and
+`osx-x64` and would be carrying it. The managed Thermo SDK itself is cross-platform; this is a
+project-reference shape, and worth raising upstream rather than working around.
+
+**It is not consumable as a package.** No `GeneratePackageOnBuild`, so there is no NuGet
+artifact; MARS would vendor or submodule a build of an unmerged draft branch. The tree is also
+not self-contained - `Common.csproj` embeds `pwiz/data/common/{psi-ms,unimod,unit}.obo` from
+the C++ tree, and the build needs `libraries/7za.exe` - so a sparse checkout has to include
+those paths. The vendor SDK is license-gated behind `-p:IAgreeToVendorLicenses=true`, which
+MARS's CI and release build would have to carry deliberately.
+
+**The port is a draft at 85% semantic parity** with C++ msconvert (359 of 421 comparable
+files identical), with the remaining differences documented as mostly not port defects.
+
+### The real question is the writer, not the reader
+
+MARS's output guarantee is the [byte-splice passthrough](mzml-passthrough.md): the corrected
+file is the input, byte for byte, except the m/z arrays actually changed. That guarantee
+exists because two serializer round-trips in the Python implementation produced valid mzML
+that broke DIA-NN and SeeMS.
+
+Reading RAW removes the input the splice is made against. `RAW -> MARS -> mzML` means MARS
+*generates* mzML, and the guarantee weakens from "identical by construction" to "our writer is
+as good as msconvert's" - which is a far larger surface, and one pwiz-sharp is still
+reconciling. Training from RAW and applying to an msconvert mzML keeps the guarantee but
+keeps the conversion too, so it buys nothing.
+
+That makes this a strategic choice rather than an incremental feature: RAW in and mzML out
+turns MARS into a converter.
+
+### Recommendation
+
+Start with **`mars qc` accepting `.raw`**. `qc` writes no mzML, so it takes on the reader and
+none of the writer risk, and it answers a question worth answering before a conversion rather
+than after: is there enough systematic error in this run to be worth calibrating? Behind that,
+decide `calibrate --raw` separately, once the reader has been used in earnest and PR #4178 has
+landed.
+
+Reproduce with the probe under `scratchpad/rawprobe` - `Program.cs` for the field dump,
+`Parallel.cs` for the thread scaling.
