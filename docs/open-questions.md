@@ -244,3 +244,36 @@ retire it on the evidence rather than in advance. Note that mzMLb output on `lin
 
 Reproduce with the probes under `scratchpad/` - `rawprobe` for the reader, `pwizwrite` for the
 wrapper and writer.
+
+## MARS is blind to ion mobility
+
+**Found while adding Bruker support, not yet addressed.**
+
+ProteoWizard's `diaPASEF.d` test file holds 4,631 spectra with **5 distinct scan times**, and
+every one of them carries an inverse reduced ion mobility. It is five TIMS frames, each
+expanded to about 926 spectra - one per mobility scan - taken as a 0.31-second excerpt from
+64.4 minutes into a run.
+
+That is how pwiz presents TIMS data when the mobility dimension is not combined, and it means
+MARS sees roughly 900 spectra sharing one retention time, distinguished by a dimension it has
+no feature for.
+
+The concrete gap: a diaPASEF isolation window is two-dimensional, m/z **and** mobility. MARS
+reads the m/z bounds and nothing else, so two windows at the same m/z but different mobility
+are identical as far as the model is concerned. `precursor_mz`, `absolute_time` and
+`acquisition time` are all constant within a frame; only the intensity and space-charge
+features vary between those 900 spectra.
+
+Whether that matters is an empirical question nobody has asked yet. It matters if mass error
+on a timsTOF depends on mobility - which is plausible, since mobility separation happens before
+the flight tube and changes both the ion population reaching it and when - and does not if the
+error is dominated by the same effects MARS already models.
+
+What would settle it: calibrate a real diaPASEF run, then plot the residual against
+`inverse reduced ion mobility` the way the QC report already plots it against every feature. If
+that panel is flat, nothing is missing. If it slopes, mobility belongs in the feature set, and
+the isolation window should carry its mobility bounds as well as its m/z bounds.
+
+Worth doing before anyone concludes from a weak reduction that MARS does not help on Bruker
+data - with the injection-time group off as well, a timsTOF run is fitted on 8 features rather
+than 22, and two separate explanations for a poor result is one too many.
