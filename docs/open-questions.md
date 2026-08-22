@@ -296,17 +296,44 @@ which is what #4178 merging brings.
 
 ### What the switch will need
 
-**Finding the install is the awkward part.** ClickOnce does not put Skyline anywhere
-predictable - on this machine it sits under a hashed path of the shape
+**Finding the install needs a registry lookup, and the registry does not hold the path.**
+ClickOnce puts Skyline under a hashed directory that changes on every update, so a directory
+constant is not an option. The route from registry to files, confirmed against the
+Skyline-daily installed on the development machine:
 
-```
-C:\Users\<user>\AppData\Local\Apps\2.0\<hash>\<hash>\skyl..tion_<hash>\
-```
+1. Enumerate `HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall`. The subkey names are
+   opaque hashes - `6e917b9fd968e06d` here - so match on `DisplayName`, which is `Skyline-daily`
+   (a second entry, `Skyline-daily Parquet`, is a tool rather than the application).
 
-so a hardcoded path is not an option, and the directory changes on every update. Discovery will
-need a registry lookup, or the ClickOnce manifest, or an explicit override. An override should
-exist regardless - `--vendor-dir` or an environment variable - so an unusual install is not
-stuck.
+2. The entry has **no `InstallLocation`**. What it does have is the ClickOnce identity, in
+   `UninstallString` and `ShortcutAppId`:
+
+   ```
+   rundll32.exe dfshim.dll,ShArpMaintain Skyline-daily.application, Culture=neutral,
+   PublicKeyToken=9286511f3362df93, processorArchitecture=msil
+   ```
+
+   Take `PublicKeyToken`. Keep `DisplayVersion` too - `26.1.1.209` here - it disambiguates in
+   the next step.
+
+3. That token is embedded in the deployment directory name under
+   `%LOCALAPPDATA%\Apps\2.0`:
+
+   ```
+   ...\Apps\2.0\<hash>\<hash>\skyl..tion_9286511f3362df93_001a.0001_6c454ec13578dbec\
+   ```
+
+   Several directories match the token - previous versions are kept, and `..exe_` folders sit
+   alongside `..tion_` ones. Pick by matching the registry's `DisplayVersion` against the
+   `Skyline-daily.exe` file version in each candidate, rather than by newest timestamp: an
+   update in progress would make the timestamp lie.
+
+That directory is the one holding the vendor assemblies. On this machine it holds
+`ThermoFisher.CommonCore.RawFileReader.dll` at **5.0.0.93** against Skyline-daily 26.1.1.209,
+which is the version gap above, measured on a current daily build rather than assumed.
+
+macOS and Linux will need something else entirely - Skyline is Windows-only - so those
+platforms keep the bundled SDKs regardless, and the switch is a Windows-only optimisation.
 
 **Only the vendor SDKs move.** mzMLb needs a native HDF5 through `HDF.PInvoke`, which is not a
 vendor library and would stay bundled.
