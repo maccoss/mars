@@ -253,6 +253,12 @@ public sealed class CommandLineArgs
             {
                 files.Add(Path.GetFullPath(pattern));
             }
+            else if (Directory.Exists(pattern) && MARS.Pwiz.SpectrumSources.IsReadable(pattern))
+            {
+                // Bruker and Agilent runs are directories, not files. A .d named directly is an
+                // input; a directory that is not a run is handled by --mzml-dir below.
+                files.Add(Path.GetFullPath(pattern));
+            }
             else
             {
                 throw new FileNotFoundException($"File not found: {pattern}");
@@ -266,6 +272,13 @@ public sealed class CommandLineArgs
             // Every format MARS can read, not just mzML - a directory of .raw is as
             // legitimate an input as a directory of converted files.
             foreach (string match in Directory.EnumerateFiles(directory))
+            {
+                if (MARS.Pwiz.SpectrumSources.IsReadable(match))
+                    files.Add(Path.GetFullPath(match));
+            }
+
+            // Directory-shaped runs inside the directory, e.g. a folder of Bruker .d.
+            foreach (string match in Directory.EnumerateDirectories(directory))
             {
                 if (MARS.Pwiz.SpectrumSources.IsReadable(match))
                     files.Add(Path.GetFullPath(match));

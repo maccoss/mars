@@ -122,11 +122,34 @@ Thermo-to-Analysis-to-Waters reference that costs the IL3000 suppression, and bo
 
 ### Which vendors
 
-Only Thermo today. The others are recognized well enough to say what is missing rather than
-"unrecognized file":
-
-| Extension | Vendor | Status |
+| Format | Vendor | Status |
 |---|---|---|
+| `.mzML` | - | Always, read by MARS itself |
+| `.raw` | Thermo | Windows, Linux, macOS |
+| `.d`, `.tdf`, `.tsf`, `.baf` | Bruker | Windows and Linux |
+| `.wiff`, `.wiff2` | Sciex | **Windows only** |
+| `.lcd` | Shimadzu | Not referenced yet |
+| `.d` | Agilent | Not referenced yet |
+
+Sciex is Windows-only because its SDK is: a SmartAssembly bundle loaded through a side-by-side
+`AssemblyLoadContext`, needing a native SQLite interop, which pwiz-sharp gates on Windows for
+that reason. Thermo's SDK is managed and runs anywhere. Bruker ships separate Windows and
+Linux archives.
+
+Bruker and Agilent runs are **directories** rather than files. `--mzml`, `--mzml-dir` and bare
+arguments all accept them, and pwiz decides which vendor a `.d` belongs to by what is inside
+it.
+
+Verified against ProteoWizard's own vendor test files: a Bruker `diaPASEF.d`, a Sciex ZenoTOF
+7600 `.wiff2`, a Sciex SWATH `.wiff2`, and a legacy `.wiff`. All were detected as
+high-resolution except the legacy `.wiff`, which is unit-resolution, and all reported isolation
+windows on every MS2.
+
+**Bruker records no ion injection time.** MARS notices and turns the injection-time feature
+group off, exactly as it does for an mzML that lacks it - fourteen of the twenty-two features
+depend on it. The model is fitted on what is left.
+
+---|---|---|
 | `.mzML` | - | Always |
 | `.raw` | Thermo | With a pwiz-sharp build |
 | `.wiff`, `.wiff2` | Sciex | Not referenced yet; Windows-only when it is |

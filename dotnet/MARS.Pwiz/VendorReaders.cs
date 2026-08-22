@@ -2,7 +2,11 @@
 
 using System.Runtime.CompilerServices;
 using Pwiz.Data.MsData.Readers;
+using Pwiz.Vendor.Bruker;
 using Pwiz.Vendor.Thermo;
+#if MARS_SCIEX
+using Pwiz.Vendor.Sciex;
+#endif
 
 namespace MARS.Pwiz;
 
@@ -36,5 +40,12 @@ internal static class VendorReaders
         // ReaderList, and ReaderList.Default builds a fresh list each time it is read, so
         // adding to that would be adding to a copy that is thrown away.
         ReaderList.AdditionalReaders.Add(new Reader_Thermo());
+        ReaderList.AdditionalReaders.Add(new Reader_Bruker());
+
+        // Sciex only where its SDK runs. Everywhere else SpectrumSources still recognizes
+        // .wiff and .wiff2 well enough to say why it cannot open them.
+#if MARS_SCIEX
+        ReaderList.AdditionalReaders.Add(new Reader_Sciex());
+#endif
     }
 }

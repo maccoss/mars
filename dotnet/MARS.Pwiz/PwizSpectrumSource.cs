@@ -95,8 +95,7 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
         record.InstrumentConfigurationRef = null;
         record.FilterString = scan?.CvParam(CVID.MS_filter_string).Value;
 
-        // pwiz normalizes scan start time to minutes, the unit MARS stores.
-        record.RetentionTime = scan?.CvParamValueOrDefault(CVID.MS_scan_start_time, 0.0) ?? 0.0;
+        record.RetentionTime = Minutes(scan?.CvParam(CVID.MS_scan_start_time));
 
         // MARS holds injection time in seconds; the cvParam is milliseconds.
         double injectionMs = scan?.CvParamValueOrDefault(CVID.MS_ion_injection_time, 0.0) ?? 0.0;
@@ -138,6 +137,28 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
         record.AcquisitionStartTime = AcquisitionStartTime;
         record.AbsoluteTime = (AcquisitionStartTime ?? 0) + (record.RetentionTime * 60.0);
         return true;
+    }
+
+    /// <summary>
+    /// A time cvParam in minutes, honouring the unit it declares.
+    /// </summary>
+    /// <remarks>
+    /// Vendors differ: Thermo records scan start time in minutes, Bruker in seconds. Reading
+    /// the value and assuming minutes made a 64-minute diaPASEF run look like 64 hours, which
+    /// would have gone into the absolute_time feature and out again as noise. An absent or
+    /// unrecognized unit is treated as minutes, which is mzML's default.
+    /// </remarks>
+    private static double Minutes(CVParam? param)
+    {
+        if (param is null) return 0.0;
+
+        double value = param;
+        return param.Units switch
+        {
+            CVID.UO_second => value / 60.0,
+            CVID.UO_millisecond => value / 60_000.0,
+            _ => value,
+        };
     }
 
     /// <summary>

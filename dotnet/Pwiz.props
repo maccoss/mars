@@ -13,6 +13,18 @@
     <PwizSharpDir Condition="'$(PwizSharpDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\ProteoWizard\pwiz\pwiz-sharp</PwizSharpDir>
     <PwizMsDataProject>$(PwizSharpDir)\pwiz\src\MsData\MsData.csproj</PwizMsDataProject>
     <PwizThermoProject>$(PwizSharpDir)\pwiz\src\Vendor\Thermo\Thermo.csproj</PwizThermoProject>
+    <PwizBrukerProject>$(PwizSharpDir)\pwiz\src\Vendor\Bruker\Bruker.csproj</PwizBrukerProject>
+    <PwizSciexProject>$(PwizSharpDir)\pwiz\src\Vendor\Sciex\Sciex.csproj</PwizSciexProject>
+    <PwizSciexWiff2Project>$(PwizSharpDir)\pwiz\src\Vendor\Sciex\Wiff2\Sciex.Wiff2.csproj</PwizSciexWiff2Project>
+    <PwizSciexOfxStubProject>$(PwizSharpDir)\pwiz\src\Vendor\Sciex\OfxLoggingStub\OfxLoggingStub.csproj</PwizSciexOfxStubProject>
+
+    <!--
+      Sciex is Windows-only: its SDK is a SmartAssembly bundle that unpacks through a
+      side-by-side AssemblyLoadContext and needs a native SQLite interop, and pwiz-sharp gates
+      it on Windows for that reason. Thermo's SDK is managed and runs anywhere; Bruker ships
+      both a Windows and a Linux archive.
+    -->
+    <PwizSciexAvailable Condition="'$(OS)' == 'Windows_NT' and Exists('$(PwizSciexProject)')">true</PwizSciexAvailable>
     <PwizAvailable Condition="Exists('$(PwizMsDataProject)')">true</PwizAvailable>
     <PwizAvailable Condition="'$(PwizAvailable)' == ''">false</PwizAvailable>
   </PropertyGroup>

@@ -53,6 +53,15 @@ high-resolution data no longer needs to be told what it is.
   the model file, the CSV dumps, the Python parity comparison - because they are identifiers
   there. Type is larger throughout.
 
+- **Bruker and Sciex read directly too**, alongside Thermo. Bruker `.d`, `.tdf`, `.tsf` and
+  `.baf` on Windows and Linux; Sciex `.wiff` and `.wiff2` on Windows, which is as far as that
+  SDK goes. Bruker and Agilent runs are directories rather than files, and `--mzml`,
+  `--mzml-dir` and bare arguments all accept them.
+
+  Verified against ProteoWizard's own vendor test files - a Bruker `diaPASEF.d`, a ZenoTOF 7600
+  `.wiff2`, a SWATH `.wiff2` and a legacy `.wiff`. Bruker records no ion injection time; MARS
+  turns that feature group off, as it already does for an mzML without it.
+
 - **Thermo `.raw` read directly.** `qc`, `calibrate` and `apply` open a Thermo raw file
   without a conversion step, through the pwiz-sharp vendor reader. `--mzml`, `--mzml-dir` and
   bare file arguments all accept it; a directory now picks up every format MARS can read.
@@ -113,6 +122,12 @@ high-resolution data no longer needs to be told what it is.
   the nearest real one. The set of valid options is whatever the command reads, so it cannot
   drift from the code; a test passes each command its full documented option set and asserts
   none is rejected.
+
+- **Retention time was read 60x too large from any vendor that records it in seconds.** The
+  pwiz adapter took the scan-start-time value and assumed minutes. Thermo writes minutes so
+  nothing showed; Bruker writes seconds, and a 64-minute diaPASEF run came back as 64 hours,
+  which would have gone into the absolute_time feature and out again as noise. Both adapters
+  now honour the unit the cvParam declares. Found by testing a second vendor.
 
 - **Numbers could have been parsed and written in the machine's locale.** MARS got its
   locale-independence from `InvariantGlobalization`, which had to be relaxed for builds

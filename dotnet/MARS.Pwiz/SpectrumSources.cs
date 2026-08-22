@@ -22,15 +22,23 @@ public static class SpectrumSources
     private static readonly string[] NativeExtensions = { ".mzml" };
 
     /// <summary>
-    /// Vendor formats pwiz can read. Only Thermo is referenced today; the rest are listed so
-    /// that MARS can say "this build cannot read that" rather than "unrecognized file".
+    /// Vendor formats pwiz can read. Thermo, Bruker and Sciex are referenced; the rest are
+    /// listed so that MARS can say "this build cannot read that" rather than "unrecognized
+    /// file", and so that a format gated by platform - Sciex off Windows - gives the same
+    /// answer.
     /// </summary>
     private static readonly Dictionary<string, string> VendorExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         [".raw"] = "Thermo",
         [".wiff"] = "Sciex",
         [".wiff2"] = "Sciex",
-        [".d"] = "Agilent or Bruker",
+
+        // Bruker and Agilent both use a .d directory; pwiz's readers identify which by what is
+        // inside it, so MARS does not have to guess here.
+        [".d"] = "Bruker or Agilent",
+        [".tdf"] = "Bruker",
+        [".tsf"] = "Bruker",
+        [".baf"] = "Bruker",
         [".lcd"] = "Shimadzu",
         [".uimf"] = "UIMF",
     };

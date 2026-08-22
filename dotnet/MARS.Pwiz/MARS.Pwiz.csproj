@@ -29,6 +29,10 @@
     <DefineConstants>$(DefineConstants);MARS_NO_PWIZ</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(PwizSciexAvailable)' == 'true'">
+    <DefineConstants>$(DefineConstants);MARS_SCIEX</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
     <Compile Remove="MarsSpectrumList.cs" />
     <Compile Remove="PwizWriteBackend.cs" />
@@ -61,6 +65,34 @@
     -->
     <ProjectReference Include="$(PwizThermoProject)"
                       Condition="Exists('$(PwizThermoProject)')" />
+
+    <!-- Bruker: BAF, TSF and TDF including PASEF. Windows and Linux, from separate archives. -->
+    <ProjectReference Include="$(PwizBrukerProject)"
+                      Condition="Exists('$(PwizBrukerProject)')" />
+
+    <!-- Sciex: .wiff through the legacy provider, .wiff2 through SCIEX.Apis.Data.v1. Windows
+         only - see Pwiz.props. -->
+    <ProjectReference Include="$(PwizSciexProject)"
+                      Condition="'$(PwizSciexAvailable)' == 'true'" />
+
+    <!--
+      Sciex .wiff2 is a runtime-only plugin. Built as a dependency but deliberately NOT
+      referenced: Wiff2LoadContext loads Pwiz.Vendor.Sciex.Wiff2.dll on demand into a
+      side-by-side AssemblyLoadContext, so that its bundled SCIEX.Apis.Data.v1 does not collide
+      with the signed Clearcore2 assemblies the legacy .wiff path uses in the default context.
+      Referencing it normally would put it in deps.json and defeat that.
+    -->
+    <ProjectReference Include="$(PwizSciexWiff2Project)" Condition="'$(PwizSciexAvailable)' == 'true'">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Content</OutputItemType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ProjectReference>
+
+    <ProjectReference Include="$(PwizSciexOfxStubProject)" Condition="'$(PwizSciexAvailable)' == 'true'">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Content</OutputItemType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -17,4 +17,42 @@
     <ProjectReference Include="..\MARS.Pwiz\MARS.Pwiz.csproj" />
   </ItemGroup>
 
+
+  <!--
+    Sciex .wiff2 needs three assemblies in a wiff2/ subdirectory beside the executable, which
+    the SDK loads through its own side-by-side AssemblyLoadContext. Staging them is the HOST
+    application's job - pwiz's Sciex project extracts them but does not place them - so this
+    mirrors StageWiff2NativeAssemblies from msconvert-sharp's csproj. Without it every .wiff2
+    fails to open while the legacy .wiff path keeps working.
+
+    EnsureTrailingSlash matters and is not decoration. MSBuild appends the trailing slash to
+    OutputPath inside a project, which cannot touch a GLOBAL property, so a publish with -o
+    leaves it slash-less and "$(OutputPath)wiff2" resolves to the SIBLING directory. Upstream
+    hit exactly that, and it silently produced four bogus failures in their parity sweep.
+  -->
+  <Target Name="StageSciexWiff2" AfterTargets="Build;Publish"
+          Condition="'$(PwizSciexAvailable)' == 'true'">
+    <PropertyGroup>
+      <_SciexDeps>$(PwizSharpDir)\vendor-archives\Sciex</_SciexDeps>
+      <_SciexAssemblies>$(PwizSharpDir)\vendor-assemblies\Sciex</_SciexAssemblies>
+      <_Wiff2Dir>$([MSBuild]::EnsureTrailingSlash('$(OutputPath)'))wiff2</_Wiff2Dir>
+      <_Wiff2PublishDir Condition="'$(PublishDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(PublishDir)'))wiff2</_Wiff2PublishDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_Wiff2Payload Include="$(_SciexDeps)\System.Data.SQLite.dll" />
+      <_Wiff2Payload Include="$(_SciexDeps)\Unity.Abstractions.dll" />
+      <_Wiff2Payload Include="$(_SciexAssemblies)\SQLite.Interop.dll" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(_Wiff2Dir)" />
+    <Copy SourceFiles="@(_Wiff2Payload)" DestinationFolder="$(_Wiff2Dir)"
+          SkipUnchangedFiles="true" OverwriteReadOnlyFiles="true" ContinueOnError="true" />
+
+    <MakeDir Directories="$(_Wiff2PublishDir)" Condition="'$(_Wiff2PublishDir)' != ''" />
+    <Copy SourceFiles="@(_Wiff2Payload)" DestinationFolder="$(_Wiff2PublishDir)"
+          Condition="'$(_Wiff2PublishDir)' != ''"
+          SkipUnchangedFiles="true" OverwriteReadOnlyFiles="true" ContinueOnError="true" />
+  </Target>
+
 </Project>
