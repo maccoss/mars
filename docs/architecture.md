@@ -10,8 +10,9 @@ dotnet/
   MARS/            the CLI: argument parsing, the five commands, the QC report
   MARS.Core/       matching, features, the calibrator, correction. No I/O
   MARS.IO/         mzML reading and writing, library readers, the SQLite reader
+  MARS.Pwiz/       vendor formats in, non-mzML formats out, through pwiz-sharp. Optional
   MARS.OspreyML/   compiles the vendored Osprey.ML sources
-  MARS.Test/       70 tests
+  MARS.Test/       179 tests
   third_party/
     Osprey.ML/     verbatim copies of the boosting code, hash-guarded
 ```
@@ -71,6 +72,38 @@ of rows.
 
 **`SpectrumRecord`** carries the decoded m/z and intensity arrays plus the metadata the
 features need. Buffers are pooled and reused between spectra.
+
+## The pwiz path
+
+`MARS.Pwiz` is where every format that is not mzML enters or leaves. It is **optional**:
+pwiz-sharp has no package feed, so the reference points at an external checkout and the project
+compiles either way. Without one, `MARS_NO_PWIZ` drops the backend, `PwizOutput` reports itself
+unavailable, and MARS reads and writes mzML exactly as it always has. That is the same shape
+pwiz's own vendor projects use for their SDKs.
+
+| Type | Does |
+|---|---|
+| `SpectrumSources` | Picks a reader from the path: mzML to `MARS.IO`, everything else to pwiz |
+| `PwizSpectrumSource` | Vendor formats in, as `SpectrumRecord` - the same type the mzML reader yields |
+| `MarsSpectrumList` | A pwiz `SpectrumList` that applies the correction as spectra are pulled through |
+| `PwizWriteBackend` | mzXML, mzMLb and mgf out, and mzML when the input was a vendor file |
+| `VendorReaders` | Registers the vendor readers with pwiz's dispatcher, from a module initializer |
+| `MzMLEncoding` | Reads the input's binary encoding so the output matches it |
+
+Three things about it are load-bearing:
+
+**`ISpectrumSource` is the seam**, and it lives in `MARS.Core`. The matcher, the features and
+the model consume `SpectrumRecord` and neither know nor care which reader produced it, so
+`MARS.Core` depends on neither `MARS.IO` nor `MARS.Pwiz`.
+
+**The correction is applied identically on both paths.** `MarsSpectrumList` calls the same
+`SpectrumCorrector` the byte-splice writer does. Writing one file both ways and diffing with
+`mars compare` found no difference across 82,349,582 peaks.
+
+**Ion mobility is collapsed, not modelled.** pwiz is asked to combine each TIMS frame's
+mobility scans into one spectrum per isolation window, on read and on write. Uncombined, a
+diaPASEF frame is hundreds of two-peak spectra sharing one retention time, and fourteen of
+MARS's features are computed from the peaks surrounding a match.
 
 ## The mzML path
 
@@ -148,7 +181,8 @@ files are not byte-identical across platforms even though every decoded value is
 
 ## Dependencies
 
-`MARS.Core` has none. `MARS.IO` has `Parquet.Net`, which brings `IronCompress` and a native
+`MARS.Core` has none. `MARS.Pwiz` has whatever a pwiz-sharp checkout brings, and nothing when
+there is not one. `MARS.IO` has `Parquet.Net`, which brings `IronCompress` and a native
 compression library - the only native code in the tree.
 
 It is confined to the DIA-NN path, and it does not fail closed: without the native library,
@@ -162,7 +196,7 @@ property for consumers that do not read DIA-NN libraries. Not done yet.
 
 ## Testing
 
-70 tests. The parts with the strongest evidence are not the ones with the most tests:
+179 tests. The parts with the strongest evidence are not the ones with the most tests:
 
 - **Fragment matching and every model feature** are verified against the Python
   implementation row by row - 160,947 fragments, 24 columns, maximum absolute difference

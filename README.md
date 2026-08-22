@@ -8,6 +8,9 @@
 Learns the systematic part of a mass spectrometer's m/z error from spectral library
 matches, and subtracts it from every peak in the file.
 
+Reads Thermo, Bruker and Sciex data directly as well as mzML, and writes mzML, mzXML, mzMLb or
+mgf - so a run can be calibrated straight off the instrument with no conversion step.
+
 On Thermo Stellar ion-trap DIA data this cuts the median absolute fragment mass error
 roughly in half:
 
@@ -177,6 +180,13 @@ identifiers on every push.
 | Windows on Arm | Cross-compiled and packaged; binary confirmed ARM64, **not** smoke tested - no hosted Windows Arm runner |
 | Linux arm64 | Cross-compiled and packaged, **not** smoke tested - no hosted arm64 Linux runner |
 
+Vendor reading and the non-mzML outputs are a separate axis, because they need a build made
+against pwiz-sharp. All six runtime identifiers publish and run with them; the gaps are that
+**Sciex is Windows-only**, because its SDK is, and **mzMLb is x64-only**, because the HDF5
+library it needs is published for x64 alone. Thermo and Bruker reading, and mzML and mzXML
+writing, work on every target. None of it is exercised in CI yet - pwiz-sharp has no package
+feed, so CI builds the mzML-only configuration.
+
 > **On Windows on Arm and macOS Intel**, `Parquet.Net`'s native compression library is not
 > published for the platform, so a DIA-NN library compressed with **LZ4 or LZO** cannot be
 > read there and fails with a clear "no compression codec" message. Snappy (parquet's usual
@@ -214,6 +224,9 @@ mars calibrate \
     --output-dir corrected/
 ```
 
+The inputs do not have to be mzML: a directory of Thermo `.raw`, or a Bruker `.d`, works the
+same way, and `--output-format mzXML|mzMLb|mgf` picks what comes out.
+
 Writes `{input}-mars.mzML` for each input, plus `mars_model.json`,
 `mars_qc_summary.txt` and `mars_qc_report.html`. All input files are fitted together as one
 cohort, which is what lets the model learn drift across a run sequence rather than only
@@ -250,11 +263,39 @@ bit-identical m/z and intensity arrays with a valid index and checksum. Run this
 a corrected file misbehaves downstream: it separates a file-format problem from a model
 problem, and those have very different fixes.
 
+### Input and output formats
+
+| Read | Vendor | Platforms |
+|---|---|---|
+| `.mzML` | - | everywhere, by MARS itself |
+| `.raw` | Thermo | Windows, Linux, macOS |
+| `.d`, `.tdf`, `.tsf`, `.baf` | Bruker | Windows, Linux |
+| `.wiff`, `.wiff2` | Sciex | Windows |
+
+| Write | Notes |
+|---|---|
+| `mzML` (default) | The input byte for byte, except the m/z arrays that changed |
+| `mzXML` | Cannot express ion mobility or some isolation-window terms |
+| `mzMLb` | mzML in HDF5; roughly half the size. x64 only |
+| `mgf` | MS2 peak lists only - no MS1, no chromatograms, no scan metadata |
+
+Vendor formats and the non-mzML outputs come from
+[pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178), the .NET port of the ProteoWizard
+core, and need a build made against a checkout of it - see
+[the CLI reference](docs/cli-reference.md#input-formats). A MARS built without one reads and
+writes mzML exactly as before, and says so when asked for anything else.
+
+MARS reads the mass analyzer from the file and configures itself: 0.3 Th on a trap, 10 ppm on
+an orbitrap, TOF or Astral, with the QC report drawn in matching units. `--resolution` and
+`--tolerance` override it. On a timsTOF the ion mobility dimension is collapsed - each frame's
+mobility scans are combined into one spectrum per isolation window - because MARS models m/z
+error, not mobility.
+
 ### Commands
 
 | Command | Purpose |
 |---|---|
-| `calibrate` | Learn a correction from library matches and write recalibrated mzML |
+| `calibrate` | Learn a correction from library matches and write recalibrated output |
 | `apply` | Apply an existing model to more files |
 | `qc` | Report mass accuracy without training or writing |
 | `verify` | Round-trip a file with a null correction and check it |
@@ -293,6 +334,10 @@ platform. Compressed **file bytes** are not portable across platforms, because r
 ship different zlib builds - the same input produced 1,176,380 bytes on Windows and
 1,176,172 on Linux with every decoded value identical. Compare files with `mars compare`,
 not `cmp`. See [docs/algorithm.md](docs/algorithm.md#determinism).
+
+**mzMLb is the exception**, and not because of anything MARS does: two mzMLb writes of identical
+data differ byte-wise, because the HDF5 container records things that vary between writes. The
+spectra are the same. Use mzML or mzXML where a checksum has to match.
 
 ## Documentation
 

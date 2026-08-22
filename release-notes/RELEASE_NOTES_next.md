@@ -1,7 +1,9 @@
 # MARS vNEXT Release Notes
 
-MARS now reads the mass analyzer out of the mzML and configures itself for it, so
-high-resolution data no longer needs to be told what it is.
+MARS reads Thermo, Bruker and Sciex data directly and writes mzXML and mzMLb as well as
+mzML, so a run can be calibrated straight off the instrument with no conversion step. It also
+configures itself from the file: the mass analyzer decides the fragment tolerance and the units
+the QC report is drawn in.
 
 ## New Features
 

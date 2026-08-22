@@ -50,6 +50,29 @@ From `dotnet/`:
     --self-contained true -p:PublishSingleFile=true`
 *   **Check against Python:** see `docs/python-parity.md`
 
+### Building with vendor support
+
+Reading Thermo, Bruker or Sciex data, and writing anything but mzML, needs
+[pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178) - the .NET port of the
+ProteoWizard core, still an unmerged draft with no package feed. The reference is optional:
+without a checkout, `MARS_NO_PWIZ` drops that code and MARS reads and writes mzML exactly as
+before, which is the configuration CI builds. Do not break that - a plain
+`dotnet build`/`dotnet test` with no pwiz anywhere has to keep working.
+
+```
+dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendorLicenses=true
+```
+
+Three things that are not obvious:
+
+*   It needs the **full** pwiz working tree, not a sparse checkout of `pwiz-sharp/`. Bruker
+    reads its archives from `pwiz_aux` and pulls VC90 CRT files from `pwiz_tools/Shared/Lib`.
+*   pwiz-sharp needs a `global.json` pinning SDK 8, which is absent from the branch. Without
+    one, a nested `dotnet run` for its vendor pins generator fails to resolve an SDK.
+*   `dotnet/Directory.Build.rsp` carries a `WarningsNotAsErrors` that a single-file publish
+    needs. It repeats pwiz's own list because a global property replaces rather than extends
+    what a project sets; keep it in step with `pwiz-sharp/Directory.Build.props`.
+
 For the frozen Python package: `pip install -e ".[dev]"`, `pytest tests/`, `ruff check .`
 
 ## Release Notes
