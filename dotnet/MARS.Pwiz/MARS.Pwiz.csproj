@@ -46,7 +46,7 @@
       The wrapper therefore derives from SpectrumListBase (MsData) rather than
       SpectrumListWrapper (Analysis), which costs three delegating members.
     -->
-    <ProjectReference Include="$(PwizMsDataProject)" />
+<ProjectReference Include="$(PwizMsDataProject)" />
 
     <!--
       The Thermo reader, for reading .raw directly. This is the reference that costs

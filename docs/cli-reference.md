@@ -102,6 +102,24 @@ to happen and the intermediate file it no longer leaves behind.
 The mass analyzer is detected from the vendor file exactly as it is from an mzML, so an Astral
 `.raw` picks a 10 ppm tolerance and a ppm-scaled QC report on its own.
 
+### Platforms
+
+All six release targets build and run with the vendor reader, because the Thermo SDK MARS uses
+is managed and cross-platform.
+
+| Target | Reads `.raw` | mzML, mzXML | mzMLb |
+|---|---|---|---|
+| `win-x64`, `linux-x64`, `osx-x64` | yes | yes | yes |
+| `win-arm64`, `linux-arm64`, `osx-arm64` | yes | yes | **no** |
+
+mzMLb is the one gap: it is HDF5, and `HDF.PInvoke.1.10` bundles a native libhdf5 for x64 only,
+so an arm64 build has nothing to write it with. Everything else - reading vendor files
+included - works on all six.
+
+A build also stages two files it never uses on non-Windows targets: `MassLynxRaw.dll`, which is
+a Windows native library, and a Waters `license.key`. Both arrive through the same transitive
+Thermo-to-Analysis-to-Waters reference that costs the IL3000 suppression, and both are inert.
+
 ### Which vendors
 
 Only Thermo today. The others are recognized well enough to say what is missing rather than

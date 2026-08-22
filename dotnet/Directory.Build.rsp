@@ -1,0 +1,23 @@
+# Response file: MSBuild reads this for every command-line build, publish and test run from
+# this directory, so nobody has to remember the flag below.
+#
+# Publishing MARS as a single file turns on the single-file analyzer, and that setting flows
+# down into pwiz-sharp's projects when MARS is built with pwiz. There, pwiz's own
+# TreatWarningsAsErrors makes IL3000 fatal. It is raised against pwiz's Waters reader, which
+# MARS pulls in only transitively - Thermo references Analysis, which references Waters - and
+# never calls. It is a false positive even there: WatersRawFile.AssemblyDirectory tests
+# Assembly.Location for empty and falls back to AppContext.BaseDirectory, which is exactly the
+# documented remedy for single-file.
+#
+# It has to be a GLOBAL property. The error is raised three project references down, and
+# neither UndefineProperties nor AdditionalProperties on MARS.Pwiz's reference reaches that
+# far - both were tried, and a publish that appeared to work turned out to be reusing a cached
+# Waters build.
+#
+# CS1591 and CA1859 are pwiz-sharp's own suppressions, repeated because a global property
+# REPLACES the value a project sets rather than adding to it. Passing IL3000 alone drops those
+# two and turns one suppressed false positive into a hundred real errors. Keep this list in
+# step with pwiz-sharp/Directory.Build.props.
+#
+# Semicolons are escaped: MSBuild would otherwise read them as a property separator.
+-p:WarningsNotAsErrors=CS1591%3BCA1859%3BIL3000
