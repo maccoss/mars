@@ -1,6 +1,5 @@
 // Copyright (c) University of Washington 2026. Licensed under the MIT License.
 
-using System.Runtime.CompilerServices;
 using Pwiz.Data.MsData.Readers;
 using Pwiz.Vendor.Bruker;
 using Pwiz.Vendor.Thermo;
@@ -22,15 +21,33 @@ namespace MARS.Pwiz;
 /// though the reader is sitting in the same output directory.
 /// </para>
 /// <para>
-/// A module initializer rather than a call from <c>Main</c>, because MARS reaches pwiz from
-/// several places - reading a run, writing one - and a registration that depends on the entry
-/// point having remembered to call it is a registration that will eventually be missed.
+/// Registered from a static constructor rather than from <c>Main</c>, because MARS reaches
+/// pwiz from several places - reading a run, writing one - and a registration that depends on
+/// the entry point having remembered to call it is one that will eventually be missed. Both
+/// entry points inside this assembly call <see cref="EnsureRegistered"/>, and the runtime
+/// guarantees the static constructor runs exactly once however many of them do.
+/// </para>
+/// <para>
+/// A module initializer would be tidier still and was the first attempt, but CA2255 objects to
+/// one in a library and is right to: it would run on assembly load, which is a side effect a
+/// caller has no way to anticipate. A static constructor runs on first use instead.
 /// </para>
 /// </remarks>
 internal static class VendorReaders
 {
-    [ModuleInitializer]
-    internal static void Register()
+    static VendorReaders() => Register();
+
+    /// <summary>
+    /// Ensures the vendor readers are registered. Cheap and idempotent: the work happens in
+    /// the static constructor, which the runtime runs once on first touch of this type.
+    /// </summary>
+    internal static void EnsureRegistered()
+    {
+        // Referencing the type is what triggers the static constructor; there is nothing to do
+        // in the body.
+    }
+
+    private static void Register()
     {
         // Appended once. ReaderList.Default rebuilds a list on every access and copies
         // AdditionalReaders into it, so registering twice would double every vendor reader.

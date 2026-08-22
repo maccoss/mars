@@ -23,6 +23,8 @@ internal static class PwizWriteBackend
         string? directory = Path.GetDirectoryName(Path.GetFullPath(request.OutputPath));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
+        VendorReaders.EnsureRegistered();
+
         using var msd = new MSData();
         // Combined the same way the reader does, so that what is written matches what was
         // matched and modelled. Reading a frame one way and writing it another would put

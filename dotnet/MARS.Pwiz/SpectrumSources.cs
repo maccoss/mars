@@ -130,6 +130,7 @@ public static class SpectrumSources
 #else
         try
         {
+            VendorReaders.EnsureRegistered();
             return new PwizSpectrumSource(path);
         }
         catch (Exception ex) when (ex is TypeInitializationException or DllNotFoundException
