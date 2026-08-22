@@ -15,8 +15,12 @@
     "tests against it locally, and say in the release notes what changed. There is no drift",
     "guard the way third_party/Osprey.ML has one, because nothing is copied to drift from.",
     "",
-    "This goes away when pwiz-sharp merges and publishes packages, at which point the",
-    "reference becomes an ordinary PackageReference."
+    "This goes away when pwiz-sharp merges to master. At that point MARS should stop",
+    "carrying its own copies of the vendor SDKs and use the ones an installed",
+    "Skyline-Daily or msconvert already provides - Skyline-Daily preferably, because",
+    "ClickOnce keeps it updated. See docs/open-questions.md for why that cannot be done",
+    "today: Skyline currently ships a 5.0.0.93 .NET Framework build where pwiz-sharp",
+    "needs 8.0.6.0."
   ],
   "repository": "https://github.com/ProteoWizard/pwiz",
   "branch": "chambem2/pwiz-sharp",

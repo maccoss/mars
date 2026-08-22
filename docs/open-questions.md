@@ -269,3 +269,48 @@ Reading and writing both combine, so what gets written matches what was matched 
 The alternative - carrying mobility as a feature and fitting the uncombined slices - was
 tried and reverted. It would have meant a 23rd feature that only one vendor populates, and a
 matcher operating on spectra too sparse to compute most of the others from.
+
+## Where the vendor SDKs come from
+
+**Decided for now: MARS ships them.** A released binary carries the Thermo, Bruker and Sciex
+assemblies, so a download opens a `.raw` with nothing else installed. That is what pwiz and
+Skyline already do, and it is the only option that makes "download MARS, calibrate a run" true.
+
+**Planned to change once [PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178) merges to
+master.** When Skyline and msconvert ship pwiz-sharp themselves, MARS should stop carrying its
+own copies and use the installed ones - the user has already accepted the vendor licences by
+installing either. Skyline-Daily is the better target of the two: it updates itself through
+ClickOnce, so the SDKs track upstream without MARS releasing anything.
+
+### Why it cannot be done today
+
+Tried, and it fails for a version reason rather than a licensing one. Skyline is installed on
+the development machine and does ship `ThermoFisher.CommonCore.RawFileReader.dll` - at
+**5.0.0.93, targeting .NET Framework 4.7.1**. pwiz-sharp needs **8.0.6.0**: a `net8.0` process
+cannot load the former, and pwiz-sharp calls `RawFileReaderAdapter.ThreadedFileFactory` and the
+three-argument `Scan.FromFile`, which only the newer SDK has. The C++ ProteoWizard install
+carries the same 5.0.0.93. There is no NuGet package.
+
+So the precondition is not "Skyline is installed" but "Skyline ships pwiz-sharp's assemblies",
+which is what #4178 merging brings.
+
+### What the switch will need
+
+**Finding the install is the awkward part.** ClickOnce does not put Skyline anywhere
+predictable - on this machine it sits under a hashed path of the shape
+
+```
+C:\Users\<user>\AppData\Local\Apps\2.0\<hash>\<hash>\skyl..tion_<hash>\
+```
+
+so a hardcoded path is not an option, and the directory changes on every update. Discovery will
+need a registry lookup, or the ClickOnce manifest, or an explicit override. An override should
+exist regardless - `--vendor-dir` or an environment variable - so an unusual install is not
+stuck.
+
+**Only the vendor SDKs move.** mzMLb needs a native HDF5 through `HDF.PInvoke`, which is not a
+vendor library and would stay bundled.
+
+**`mars --version` already reports what a binary carries**, and should keep telling the truth
+across the change: a MARS that borrows its readers from Skyline and cannot find one has to say
+so there, rather than at the moment somebody opens a file.

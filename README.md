@@ -281,9 +281,14 @@ problem, and those have very different fixes.
 
 Vendor formats and the non-mzML outputs come from
 [pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178), the .NET port of the ProteoWizard
-core, and need a build made against a checkout of it - see
-[the CLI reference](docs/cli-reference.md#input-formats). A MARS built without one reads and
-writes mzML exactly as before, and says so when asked for anything else.
+core. Released binaries carry the vendor SDKs, so a download opens a `.raw` with nothing else
+installed; `mars --version` reports what the binary in front of you actually has. A MARS built
+without pwiz reads and writes mzML exactly as before, and says so when asked for anything else
+- see [the CLI reference](docs/cli-reference.md#input-formats).
+
+Once pwiz-sharp merges upstream, MARS will stop shipping its own copies and use the SDKs an
+installed Skyline-Daily or msconvert already provides. See
+[open-questions.md](docs/open-questions.md#where-the-vendor-sdks-come-from).
 
 MARS reads the mass analyzer from the file and configures itself: 0.3 Th on a trap, 10 ppm on
 an orbitrap, TOF or Astral, with the QC report drawn in matching units. `--resolution` and
