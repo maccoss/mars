@@ -17,8 +17,10 @@
     "",
     "This goes away when pwiz-sharp merges to master. At that point MARS should stop",
     "carrying its own copies of the vendor SDKs and use the ones an installed",
-    "Skyline-Daily or msconvert already provides - Skyline-Daily preferably, because",
-    "ClickOnce keeps it updated. See docs/open-questions.md for why that cannot be done",
+    "Skyline-Daily, Skyline or msconvert already provides, in that order - daily first",
+    "because ClickOnce updates it fastest, msconvert last because it never updates",
+    "itself. Whichever is found, check the SDK version before trusting it. See",
+    "docs/open-questions.md for the discovery recipe and for why that cannot be done",
     "today: Skyline currently ships a 5.0.0.93 .NET Framework build where pwiz-sharp",
     "needs 8.0.6.0."
   ],

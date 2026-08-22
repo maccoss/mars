@@ -279,8 +279,29 @@ Skyline already do, and it is the only option that makes "download MARS, calibra
 **Planned to change once [PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178) merges to
 master.** When Skyline and msconvert ship pwiz-sharp themselves, MARS should stop carrying its
 own copies and use the installed ones - the user has already accepted the vendor licences by
-installing either. Skyline-Daily is the better target of the two: it updates itself through
-ClickOnce, so the SDKs track upstream without MARS releasing anything.
+installing either.
+
+Three candidates, in preference order, and the order is about how stale each one's SDK is
+likely to be:
+
+| Candidate | Updates | Discovery |
+|---|---|---|
+| **Skyline-daily** | ClickOnce, frequent | Verified below |
+| **Skyline** | ClickOnce, much less often | Same mechanism, different name and token |
+| **msconvert** | Manual download only | Unreliable - see below |
+
+Skyline-daily first because it updates fastest, so its SDK tracks upstream without MARS
+releasing anything. Regular Skyline uses the same ClickOnce machinery and the same recipe with
+a different `DisplayName` and `PublicKeyToken`; it should be checked and used when it is the
+only one present, accepting that its SDK may lag. msconvert last: it does not update itself at
+all, and its registry entry is the least useful of the three.
+
+**Because they lag by different amounts, the version has to be checked rather than assumed.**
+Whatever is found, read the `FileVersion` of `ThermoFisher.CommonCore.RawFileReader.dll` and
+compare it against the minimum pwiz-sharp needs before using it; fall through to the next
+candidate, and finally to a bundled copy, when it is too old. That turns "prefer daily" from a
+guess into a check - and it is the same check that catches today's 5.0.0.93 immediately rather
+than at the first `MissingMethodException`.
 
 ### Why it cannot be done today
 
@@ -332,8 +353,16 @@ That directory is the one holding the vendor assemblies. On this machine it hold
 `ThermoFisher.CommonCore.RawFileReader.dll` at **5.0.0.93** against Skyline-daily 26.1.1.209,
 which is the version gap above, measured on a current daily build rather than assumed.
 
-macOS and Linux will need something else entirely - Skyline is Windows-only - so those
-platforms keep the bundled SDKs regardless, and the switch is a Windows-only optimisation.
+**msconvert is the awkward one to find.** ProteoWizard is installed on the development
+machine and registers under `HKLM`, but the entry carries **no `InstallLocation`**, there is no
+`App Paths` entry for `msconvert.exe`, and it is not under `Program Files`. Its
+`UninstallString` is a bare `MsiExec.exe /I{GUID}`, which names the product without saying
+where it went. Resolving it would mean querying the Windows Installer product database rather
+than reading a value. That is a second, independent reason to reach for it last.
+
+macOS and Linux need something else entirely - Skyline is Windows-only - so those platforms
+keep the bundled SDKs regardless. The switch is a Windows optimisation rather than a change of
+approach everywhere, which means the bundling machinery stays either way.
 
 **Only the vendor SDKs move.** mzMLb needs a native HDF5 through `HDF.PInvoke`, which is not a
 vendor library and would stay bundled.

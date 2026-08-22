@@ -286,8 +286,9 @@ installed; `mars --version` reports what the binary in front of you actually has
 without pwiz reads and writes mzML exactly as before, and says so when asked for anything else
 - see [the CLI reference](docs/cli-reference.md#input-formats).
 
-Once pwiz-sharp merges upstream, MARS will stop shipping its own copies and use the SDKs an
-installed Skyline-Daily or msconvert already provides. See
+Once pwiz-sharp merges upstream, MARS will stop shipping its own copies on Windows and use the
+SDKs an installed Skyline-daily, Skyline or msconvert already provides - in that order, and
+only after checking the version it finds. See
 [open-questions.md](docs/open-questions.md#where-the-vendor-sdks-come-from).
 
 MARS reads the mass analyzer from the file and configures itself: 0.3 Th on a trap, 10 ppm on
