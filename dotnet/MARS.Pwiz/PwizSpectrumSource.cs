@@ -40,7 +40,14 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
         Path = path;
         Length = LengthOf(path);
 
-        ReaderList.Default.Read(path, _msd);
+        // Collapse the ion mobility dimension. pwiz otherwise presents an uncombined TIMS
+        // frame as hundreds of spectra that share one retention time and one isolation m/z,
+        // separated only by mobility - ProteoWizard's own diaPASEF.d is 4,631 spectra at five
+        // distinct scan times. MARS has no mobility feature and does not want one: combining
+        // sums each frame's mobility scans back into one spectrum per isolation window, which
+        // is the shape every other instrument already produces and the shape the matcher and
+        // the space-charge features assume.
+        ReaderList.Default.Read(path, _msd, new ReaderConfig { CombineIonMobilitySpectra = true });
         _spectra = _msd.Run.SpectrumList
                    ?? throw new InvalidDataException($"No spectra in {path}.");
 

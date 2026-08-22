@@ -245,35 +245,27 @@ retire it on the evidence rather than in advance. Note that mzMLb output on `lin
 Reproduce with the probes under `scratchpad/` - `rawprobe` for the reader, `pwizwrite` for the
 wrapper and writer.
 
-## MARS is blind to ion mobility
+## Ion mobility: collapsed, not modelled
 
-**Found while adding Bruker support, not yet addressed.**
+**Settled.** MARS does not read ion mobility and does not intend to. It collapses the dimension
+instead, by asking pwiz to combine each TIMS frame's mobility scans back into one spectrum per
+isolation window.
 
-ProteoWizard's `diaPASEF.d` test file holds 4,631 spectra with **5 distinct scan times**, and
-every one of them carries an inverse reduced ion mobility. It is five TIMS frames, each
-expanded to about 926 spectra - one per mobility scan - taken as a 0.31-second excerpt from
-64.4 minutes into a run.
+The reason it came up: pwiz presents an uncombined TIMS frame as hundreds of spectra sharing
+one retention time and one isolation m/z, separated only by mobility. ProteoWizard's
+`diaPASEF.d` is 4,631 spectra at five distinct scan times, and the first MS2 in it holds
+**two peaks**. Combining turns the same file into 8 MS2 spectra across 8 distinct isolation
+windows and 4 retention times, and that first spectrum into **8,377 peaks**.
 
-That is how pwiz presents TIMS data when the mobility dimension is not combined, and it means
-MARS sees roughly 900 spectra sharing one retention time, distinguished by a dimension it has
-no feature for.
+That is not only tidier, it is the difference between usable and not. MARS matches library
+fragments within a spectrum and computes its space-charge features from the peaks around each
+match - `ions_above_0_1`, `adjacent_ratio_1_2` and the rest. On a two-peak mobility slice there
+are no neighbours to measure, so those fourteen features would be noise even where they were
+defined. Combined, the spectrum has the shape every other instrument already produces, and the
+matcher and the features work unchanged.
 
-The concrete gap: a diaPASEF isolation window is two-dimensional, m/z **and** mobility. MARS
-reads the m/z bounds and nothing else, so two windows at the same m/z but different mobility
-are identical as far as the model is concerned. `precursor_mz`, `absolute_time` and
-`acquisition time` are all constant within a frame; only the intensity and space-charge
-features vary between those 900 spectra.
+Reading and writing both combine, so what gets written matches what was matched and modelled.
 
-Whether that matters is an empirical question nobody has asked yet. It matters if mass error
-on a timsTOF depends on mobility - which is plausible, since mobility separation happens before
-the flight tube and changes both the ion population reaching it and when - and does not if the
-error is dominated by the same effects MARS already models.
-
-What would settle it: calibrate a real diaPASEF run, then plot the residual against
-`inverse reduced ion mobility` the way the QC report already plots it against every feature. If
-that panel is flat, nothing is missing. If it slopes, mobility belongs in the feature set, and
-the isolation window should carry its mobility bounds as well as its m/z bounds.
-
-Worth doing before anyone concludes from a weak reduction that MARS does not help on Bruker
-data - with the injection-time group off as well, a timsTOF run is fitted on 8 features rather
-than 22, and two separate explanations for a poor result is one too many.
+The alternative - carrying mobility as a feature and fitting the uncombined slices - was
+tried and reverted. It would have meant a 23rd feature that only one vendor populates, and a
+matcher operating on spectra too sparse to compute most of the others from.

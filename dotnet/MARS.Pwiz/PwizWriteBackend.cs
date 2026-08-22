@@ -24,7 +24,11 @@ internal static class PwizWriteBackend
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         using var msd = new MSData();
-        ReaderList.Default.Read(request.InputPath, msd);
+        // Combined the same way the reader does, so that what is written matches what was
+        // matched and modelled. Reading a frame one way and writing it another would put
+        // corrections on spectra the model never saw.
+        ReaderList.Default.Read(
+            request.InputPath, msd, new ReaderConfig { CombineIonMobilitySpectra = true });
 
         if (msd.Run.SpectrumList is null)
             throw new InvalidDataException($"No spectra in {request.InputPath}.");

@@ -53,6 +53,18 @@ high-resolution data no longer needs to be told what it is.
   the model file, the CSV dumps, the Python parity comparison - because they are identifiers
   there. Type is larger throughout.
 
+- **timsTOF frames are collapsed rather than modelled.** pwiz presents an uncombined TIMS
+  frame as hundreds of spectra sharing one retention time and one isolation m/z, separated only
+  by mobility - ProteoWizard's `diaPASEF.d` is 4,631 spectra at five distinct scan times, whose
+  first MS2 holds two peaks. MARS asks pwiz to combine each frame's mobility scans into one
+  spectrum per isolation window: the same file becomes 8 MS2 across 8 isolation windows and 4
+  retention times, and that first spectrum becomes 8,377 peaks.
+
+  This is what makes Bruker data usable rather than merely tidy. MARS computes fourteen of its
+  features from the peaks surrounding each match, and a two-peak mobility slice has no
+  neighbours to measure. Reading and writing both combine, so what is written matches what was
+  modelled. Data without an ion mobility stage is unaffected.
+
 - **Ion injection time is only used as a feature when it varies.** MARS asked whether the run
   recorded one; it now also checks that it moves. A trap sets it per spectrum from its gain
   control, so it carries information. An instrument that accumulates for a fixed period reports
