@@ -1,5 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- PwizAvailable, so the tests that need pwiz types can be excluded when there is no
+       checkout - the same shape MARS.Pwiz uses. -->
+  <Import Project="..\Pwiz.props" />
+
+  <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
+    <Compile Remove="PwizSpectrumListTest.cs" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!--
       The test host needs real cultures, so that CultureTest can put the library code under a

@@ -12,7 +12,7 @@ dotnet/
   MARS.IO/         mzML reading and writing, library readers, the SQLite reader
   MARS.Pwiz/       vendor formats in, non-mzML formats out, through pwiz-sharp. Optional
   MARS.OspreyML/   compiles the vendored Osprey.ML sources
-  MARS.Test/       179 tests
+  MARS.Test/       194 tests, 182 of them without a pwiz checkout
   third_party/
     Osprey.ML/     verbatim copies of the boosting code, hash-guarded
 ```
@@ -196,7 +196,7 @@ property for consumers that do not read DIA-NN libraries. Not done yet.
 
 ## Testing
 
-179 tests. The parts with the strongest evidence are not the ones with the most tests:
+194 tests. The parts with the strongest evidence are not the ones with the most tests:
 
 - **Fragment matching and every model feature** are verified against the Python
   implementation row by row - 160,947 fragments, 24 columns, maximum absolute difference

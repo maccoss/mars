@@ -96,6 +96,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- MarsSpectrumList is internal, and its batching is the part most worth testing. -->
+    <InternalsVisibleTo Include="MARS.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
     <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
   </ItemGroup>
