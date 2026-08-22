@@ -28,7 +28,8 @@ public static partial class SyntheticMzML
         BinaryArrayEncoding? intensityEncoding = null,
         int seed = 12345,
         int peaksPerSpectrum = 0,
-        MassAnalyzerLayout analyzers = MassAnalyzerLayout.None)
+        MassAnalyzerLayout analyzers = MassAnalyzerLayout.None,
+        bool constantInjectionTime = false)
     {
         BinaryArrayEncoding mzArrayEncoding = mzEncoding ?? new BinaryArrayEncoding(true, true);
         BinaryArrayEncoding intensityArrayEncoding = intensityEncoding ?? new BinaryArrayEncoding(true, true);
@@ -104,7 +105,8 @@ public static partial class SyntheticMzML
                 .Append(retentionTime.ToString("R", CultureInfo.InvariantCulture))
                 .Append("\" unitCvRef=\"UO\" unitAccession=\"UO:0000031\" unitName=\"minute\"/>\n");
             body.Append("              <cvParam cvRef=\"MS\" accession=\"MS:1000927\" name=\"ion injection time\" value=\"")
-                .Append((10.0 + (i % 7)).ToString("R", CultureInfo.InvariantCulture))
+                .Append((constantInjectionTime ? 10.0 : 10.0 + (i % 7))
+                    .ToString("R", CultureInfo.InvariantCulture))
                 .Append("\" unitCvRef=\"UO\" unitAccession=\"UO:0000028\" unitName=\"millisecond\"/>\n");
             body.Append("            </scan>\n          </scanList>\n");
 

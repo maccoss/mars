@@ -136,7 +136,8 @@ public static class QcCommand
         }
         else
         {
-            bool injectionTimeAvailable = CalibrateCommand.ProbeInjectionTime(sourceByFile[mzmlFiles[0]]);
+            bool injectionTimeAvailable = CalibrateCommand.UseInjectionTime(
+                CalibrateCommand.ProbeInjectionTime(sourceByFile[mzmlFiles[0]]));
             collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
         }
 

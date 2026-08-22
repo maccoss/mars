@@ -53,6 +53,14 @@ high-resolution data no longer needs to be told what it is.
   the model file, the CSV dumps, the Python parity comparison - because they are identifiers
   there. Type is larger throughout.
 
+- **Ion injection time is only used as a feature when it varies.** MARS asked whether the run
+  recorded one; it now also checks that it moves. A trap sets it per spectrum from its gain
+  control, so it carries information. An instrument that accumulates for a fixed period reports
+  the same number every time, and then `injection_time` is a constant a tree can never split
+  on, while `tic_injection_time` is TIC times that constant - `log_tic` rescaled, and a
+  duplicate that splits permutation importance with the feature it duplicates. Both are dropped
+  together, with a line saying which case it was.
+
 - **Bruker and Sciex read directly too**, alongside Thermo. Bruker `.d`, `.tdf`, `.tsf` and
   `.baf` on Windows and Linux; Sciex `.wiff` and `.wiff2` on Windows, which is as far as that
   SDK goes. Bruker and Agilent runs are directories rather than files, and `--mzml`,

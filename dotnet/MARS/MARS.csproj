@@ -12,6 +12,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The commands expose a few internals the tests drive directly, the same way MARS.IO
+         does. Keeps them out of the public surface without putting them out of reach. -->
+    <InternalsVisibleTo Include="MARS.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
     <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
     <ProjectReference Include="..\MARS.Pwiz\MARS.Pwiz.csproj" />

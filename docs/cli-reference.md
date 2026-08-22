@@ -145,9 +145,23 @@ Verified against ProteoWizard's own vendor test files: a Bruker `diaPASEF.d`, a 
 high-resolution except the legacy `.wiff`, which is unit-resolution, and all reported isolation
 windows on every MS2.
 
-**Bruker records no ion injection time.** MARS notices and turns the injection-time feature
-group off, exactly as it does for an mzML that lacks it - fourteen of the twenty-two features
-depend on it. The model is fitted on what is left.
+**Injection time has to vary to be a feature.** A trap sets it per spectrum from its automatic
+gain control, so it says how full the trap was. An instrument that accumulates for a fixed
+period gives the same number every time, and then `injection_time` is a constant - which a tree
+can never split on - while `tic_injection_time` is TIC times that constant, which is `log_tic`
+rescaled. Two features carrying nothing, one of them a duplicate that splits permutation
+importance with the feature it duplicates.
+
+MARS samples the head of the run and turns the pair off unless the value moves. Both are
+reported:
+
+```
+WARN   No ion injection time in this run; the injection-time feature group is off.
+INFO     ion injection time is the same on every spectrum ...; the injection-time feature group is off.
+```
+
+On the Bruker and Sciex files tested here the cvParam is absent altogether rather than
+constant, so the first message applies; the second covers a run that records a fixed value.
 
 ---|---|---|
 | `.mzML` | - | Always |

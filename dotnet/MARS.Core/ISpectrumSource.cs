@@ -55,3 +55,16 @@ public interface ISpectrumSource : IDisposable
     /// </remarks>
     IEnumerable<SpectrumRecord> ReadSpectra(int? msLevel = 2);
 }
+
+/// <summary>What a run's ion injection times look like, and so whether they can be a feature.</summary>
+public enum InjectionTimeUse
+{
+    /// <summary>The run does not record one.</summary>
+    Absent,
+
+    /// <summary>Recorded, but the same on every spectrum, so it carries no information.</summary>
+    Constant,
+
+    /// <summary>Recorded and varying, as a trap's gain control makes it.</summary>
+    Varying,
+}

@@ -125,9 +125,8 @@ public static class CalibrateCommand
             }
         }
 
-        bool injectionTimeAvailable = ProbeInjectionTime(sourceByFile[mzmlFiles[0]]);
-        if (!injectionTimeAvailable)
-            Log.Warn("No ion injection time in the first MS2 spectrum; the injection-time feature group is off.");
+        bool injectionTimeAvailable =
+            UseInjectionTime(ProbeInjectionTime(sourceByFile[mzmlFiles[0]]));
 
         // Decided once the readers are open, from what the first of them says its MS2
         // analyzer is. The readers know their own formats; asking the file again from here
@@ -260,15 +259,75 @@ public static class CalibrateCommand
     }
 
     /// <summary>
-    /// Whether the first MS2 spectrum carries an ion injection time. Fourteen of the
-    /// twenty-two features are undefined without one, and if it is absent that whole feature
-    /// group is dropped rather than filled with zeros.
+    /// Whether ion injection time is worth using as a feature.
     /// </summary>
-    internal static bool ProbeInjectionTime(ISpectrumSource source)
+    /// <remarks>
+    /// <para>
+    /// Presence is not enough - it also has to vary. A trap sets injection time per spectrum
+    /// from its automatic gain control, so it carries real information about how full the trap
+    /// was. A Bruker or Sciex TOF accumulates for a fixed time, so the value is the same on
+    /// every spectrum: <c>injection_time</c> is then a constant, which a tree can never split
+    /// on, and <c>tic_injection_time</c> is TIC times that constant, which is
+    /// <c>log_tic</c> rescaled. Two features carrying nothing, one of them a duplicate that
+    /// splits permutation importance with the feature it duplicates.
+    /// </para>
+    /// <para>
+    /// Sampled over the head of the run rather than the first spectrum alone: one value cannot
+    /// show variation, and on a trap the first few differ immediately.
+    /// </para>
+    /// </remarks>
+    internal static InjectionTimeUse ProbeInjectionTime(ISpectrumSource source)
     {
+        const int sample = 500;
+
+        // Loose enough to absorb float representation, orders of magnitude tighter than any
+        // real gain control. A trap's injection times differ by whole milliseconds.
+        const double constantWithin = 1e-6;
+
+        int seen = 0;
+        int withValue = 0;
+        double low = double.MaxValue;
+        double high = double.MinValue;
+
         foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
-            return spectrum.InjectionTime.HasValue;
-        return false;
+        {
+            if (spectrum.InjectionTime is double injection)
+            {
+                withValue++;
+                low = Math.Min(low, injection);
+                high = Math.Max(high, injection);
+            }
+
+            if (++seen >= sample) break;
+        }
+
+        if (withValue == 0) return InjectionTimeUse.Absent;
+
+        double scale = Math.Abs(high) > 0 ? Math.Abs(high) : 1.0;
+        return (high - low) / scale > constantWithin
+            ? InjectionTimeUse.Varying
+            : InjectionTimeUse.Constant;
+    }
+
+    /// <summary>Reports what the probe found, and what MARS did about it.</summary>
+    internal static bool UseInjectionTime(InjectionTimeUse use)
+    {
+        switch (use)
+        {
+            case InjectionTimeUse.Absent:
+                Log.Warn("No ion injection time in this run; the injection-time feature group is off.");
+                return false;
+
+            case InjectionTimeUse.Constant:
+                Log.Info("  ion injection time is the same on every spectrum, as it is on an "
+                         + "instrument that accumulates for a fixed period; the injection-time "
+                         + "feature group is off. A constant cannot be split on, and TIC times a "
+                         + "constant is what log_tic already carries.");
+                return false;
+
+            default:
+                return true;
+        }
     }
 
     private static RobustFit ParseRobust(string? value) => value?.ToLowerInvariant() switch
