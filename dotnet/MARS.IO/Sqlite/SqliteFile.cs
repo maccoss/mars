@@ -12,6 +12,7 @@
 // and UTF-8 / UTF-16 text. Does NOT support: indices, WAL, encryption, or writing.
 
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -68,7 +69,13 @@ public readonly struct SqliteValue
     {
         SqliteValueKind.Integer => _integer,
         SqliteValueKind.Real => (long)_real,
-        SqliteValueKind.Text => long.TryParse(AsText(), out long parsed) ? parsed : 0,
+        // Invariant, explicitly. A SQLite text value holds a number the way SQLite wrote it,
+        // which has nothing to do with the locale of the machine reading it - a library built
+        // in Seattle has to read the same in Munich.
+        SqliteValueKind.Text =>
+            long.TryParse(AsText(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
+                ? parsed
+                : 0,
         _ => 0,
     };
 
@@ -76,7 +83,10 @@ public readonly struct SqliteValue
     {
         SqliteValueKind.Real => _real,
         SqliteValueKind.Integer => _integer,
-        SqliteValueKind.Text => double.TryParse(AsText(), out double parsed) ? parsed : double.NaN,
+        SqliteValueKind.Text =>
+            double.TryParse(AsText(), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
+                ? parsed
+                : double.NaN,
         _ => double.NaN,
     };
 

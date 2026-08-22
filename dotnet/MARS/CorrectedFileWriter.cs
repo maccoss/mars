@@ -72,6 +72,7 @@ internal static class CorrectedFileWriter
             Options = correctionOptions,
             AcquisitionStartTime = source.AcquisitionStartTime,
             Temperatures = temperatures,
+            Threads = threads,
 
             // Match what the input used, when the input is an mzML that can be read for it.
             // pwiz's own default is 64-bit uncompressed, which makes the output substantially
@@ -84,6 +85,11 @@ internal static class CorrectedFileWriter
 
         Report(written.SpectraCorrected, written.SpectraSeen, written.OutputLength,
                written.MonotonicityFixes, correctionOptions);
+
+        // Where the time went, so a slow conversion can be attributed rather than guessed at.
+        // Everything not in these two is inside pwiz's encoder.
+        Log.Debug($"  reader {written.ReaderTime.TotalSeconds:F1} s, "
+                  + $"model {written.CorrectorTime.TotalSeconds:F1} s");
 
         if (written.SpectraReverted > 0)
         {

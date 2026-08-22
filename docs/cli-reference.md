@@ -151,6 +151,27 @@ which inflated a Stellar run by 61%.
 
 `mgf` and `mzXML` print a warning at startup saying what they drop.
 
+### Speed
+
+`--threads` applies to the pwiz writer as well as to MARS's own. Scoring the model is where a
+conversion's time goes - on one Astral run, 243 s of 308 s, against 17 s reading and about
+49 s encoding - and pwiz's writers pull spectra one at a time, so MARS reads a batch ahead and
+corrects the batch in parallel. That run goes from 318 s on one thread to 103 s on twelve.
+
+Reads stay sequential: they are 5% of the work and the vendor readers are not thread-safe.
+What is left after the model is parallelized is mostly pwiz's encoder, which is inside pwiz.
+
+### Byte-reproducibility
+
+mzML and mzXML are byte-reproducible: the same input, model and version produce the same
+bytes, on any number of threads. Verified by writing an mzXML on 1 thread and on 12 and
+comparing hashes.
+
+**mzMLb is not**, and not because of anything MARS does - two mzMLb writes of identical data,
+at the same thread count, differ byte-wise, because the HDF5 container records things that
+vary between writes. The spectra are the same; the file is not. Use mzML or mzXML where a
+checksum has to match.
+
 ### Builds without pwiz
 
 The pwiz reference is optional, because pwiz-sharp has no package feed yet. A MARS built

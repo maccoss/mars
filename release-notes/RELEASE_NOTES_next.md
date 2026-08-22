@@ -90,6 +90,20 @@ high-resolution data no longer needs to be told what it is.
   without a checkout writes mzML exactly as before and refuses the other formats with an
   explanatory error. Build with `-p:PwizSharpDir=<path>/pwiz/pwiz-sharp` to enable them.
 
+- **The pwiz write is parallel.** Scoring the model is where the time goes - on one Astral
+  run, 243 s of 308 s, against 17 s reading and about 49 s encoding - and pwiz's writers pull
+  spectra one at a time, so it was all landing on one core. MARS now reads a batch ahead and
+  corrects the batch in parallel, honouring `--threads`. That run goes from **318 s to 103 s**.
+
+  Reads stay sequential: 5% of the work, and the vendor readers are not thread-safe. Only the
+  correction is parallel, and it is embarrassingly so - each spectrum is independent and
+  `SpectrumCorrector` holds nothing mutable. An mzXML written on 1 thread and on 12 hashes
+  identically.
+
+  Worth knowing: **mzMLb is not byte-reproducible**, and not because of anything MARS does.
+  Two mzMLb writes of identical data at the same thread count differ, because the HDF5
+  container records things that vary between writes. mzML and mzXML are reproducible.
+
 ## Bug Fixes
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were
@@ -99,6 +113,22 @@ high-resolution data no longer needs to be told what it is.
   the nearest real one. The set of valid options is whatever the command reads, so it cannot
   drift from the code; a test passes each command its full documented option set and asserts
   none is rejected.
+
+- **Numbers could have been parsed and written in the machine's locale.** MARS got its
+  locale-independence from `InvariantGlobalization`, which had to be relaxed for builds
+  carrying a vendor reader - the Thermo SDK constructs `CultureInfo("en-US")` and throws when
+  cultures are unavailable. Relaxing it hands `CurrentCulture` back to the operating system.
+
+  MARS now pins the invariant culture at startup instead, so ICU is available to the SDK while
+  MARS's own numbers stay locale-independent. Two places that would have broken are fixed at
+  the source as well: `mars verify` formatted a timestamp without a culture, and - the one
+  that mattered - the BiblioSpec reader parsed numbers stored as SQLite text with the current
+  culture. Under a German locale that turns a fragment m/z of 653.835516 into 653,835,516,
+  with no error to show for it.
+
+  A test class now runs the report writer, the model round-trip and the library reader under
+  `de-DE`, and the test host is built culture-capable so this runs in CI too - the
+  configuration where nobody would otherwise notice.
 
 - **A mistyped option crashed instead of reporting an error.** The refusal added above is
   raised by throwing, and `Program` was not catching it, so a typo produced a stack trace

@@ -21,7 +21,43 @@ public static class Program
 
     public static int Main(string[] args)
     {
+        PinInvariantCulture();
+
         // Every diagnostic goes to stderr so stdout stays clean for piping.
+        return Dispatch(args);
+    }
+
+    /// <summary>
+    /// Makes every thread format and parse numbers the same way, whatever the machine's
+    /// locale is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// MARS used to get this from <c>InvariantGlobalization</c>, which forces the whole runtime
+    /// to the invariant culture. That had to be relaxed for builds carrying a vendor reader,
+    /// because the Thermo SDK constructs <c>CultureInfo("en-US")</c> and throws when cultures
+    /// are unavailable. Relaxing it hands <c>CurrentCulture</c> back to the operating system,
+    /// and on a machine set to a locale that writes decimals with a comma, anything formatted
+    /// or parsed without an explicit culture silently changes meaning.
+    /// </para>
+    /// <para>
+    /// Setting the default culture instead keeps ICU loaded - so the SDK can ask for the
+    /// culture it wants - while MARS's own numbers stay invariant. That matters for output
+    /// that is read by other programs rather than by people: SVG coordinates in the QC report,
+    /// numbers in the model JSON, and the values parsed back out of a BiblioSpec library, all
+    /// of which would be corrupted rather than merely ugly.
+    /// </para>
+    /// </remarks>
+    private static void PinInvariantCulture()
+    {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+    }
+
+    private static int Dispatch(string[] args)
+    {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
             PrintUsage();

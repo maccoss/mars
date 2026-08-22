@@ -4,6 +4,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using MARS.IO;
 
@@ -80,7 +81,7 @@ public static class VerifyCommand
         MzMLFileInfo info = MzMLFile.Inspect(inputPath);
         Log.Info($"Input: {inputPath}");
         Log.Info($"  {info.Length:N0} bytes, indexed={info.WasIndexed}, indexedmzML={info.IsIndexedMzML}");
-        Log.Info($"  acquisition start: {(info.AcquisitionStartTime is double t ? t.ToString("F3") : "not recorded")}");
+        Log.Info($"  acquisition start: {(info.AcquisitionStartTime is double t ? t.ToString("F3", CultureInfo.InvariantCulture) : "not recorded")}");
 
         MzMLWriteResult write = MzMLWriter.Write(
             info, outputPath, () => new NullMzTransform(),

@@ -34,7 +34,8 @@ internal static class PwizWriteBackend
             request.Calibrator,
             request.Options,
             request.AcquisitionStartTime,
-            request.Temperatures);
+            request.Temperatures,
+            request.Threads);
 
         msd.Run.SpectrumList = mars;
 
@@ -52,6 +53,8 @@ internal static class PwizWriteBackend
             MonotonicityFixes = mars.MonotonicityFixes,
             SpectraReverted = mars.SpectraReverted,
             OutputLength = new FileInfo(request.OutputPath).Length,
+            ReaderTime = mars.ReaderTime,
+            CorrectorTime = mars.CorrectorTime,
         };
     }
 

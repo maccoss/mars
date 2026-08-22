@@ -1,6 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!--
+      The test host needs real cultures, so that CultureTest can put the library code under a
+      comma-decimal locale and check it still writes points. Under the invariant globalization
+      MARS sets elsewhere, new CultureInfo("de-DE") silently yields an invariant culture and
+      the test would pass without testing anything.
+
+      Set unconditionally, so the check runs in CI too - CI has no pwiz checkout, and that is
+      exactly the configuration where nobody would otherwise notice a locale bug.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <RootNamespace>MARS.Test</RootNamespace>
     <AssemblyName>MARS.Test</AssemblyName>
     <IsPackable>false</IsPackable>

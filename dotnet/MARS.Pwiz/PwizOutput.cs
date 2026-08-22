@@ -34,6 +34,12 @@ public sealed class PwizWriteResult
     public long SpectraReverted { get; init; }
 
     public long OutputLength { get; init; }
+
+    /// <summary>Time spent pulling spectra from the input.</summary>
+    public System.TimeSpan ReaderTime { get; init; }
+
+    /// <summary>Time spent applying the model.</summary>
+    public System.TimeSpan CorrectorTime { get; init; }
 }
 
 /// <summary>
@@ -69,6 +75,15 @@ public sealed class PwizWriteRequest
     /// not ask for.
     /// </remarks>
     public SpectrumEncoding Encoding { get; init; } = SpectrumEncoding.Default;
+
+    /// <summary>
+    /// Threads to score the model on. Zero or less means one per processor.
+    /// </summary>
+    /// <remarks>
+    /// Scoring is where a conversion's time goes - 79% of one measured Astral write - and
+    /// pwiz's writers pull spectra one at a time, so without this it all runs on one core.
+    /// </remarks>
+    public int Threads { get; init; }
 }
 
 /// <summary>
