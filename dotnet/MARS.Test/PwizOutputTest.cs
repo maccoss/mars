@@ -2,6 +2,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using MARS.Core;
 using MARS.IO;
 using MARS.Pwiz;
@@ -66,19 +67,42 @@ public class PwizOutputTest
     public void OnlyAnMzMLInputCanBeSpliced(string path, bool expected) =>
         Assert.Equal(expected, SpectrumSources.CanSplice(path));
 
-    /// <summary>Every format MARS can read is recognized, whatever this build can open.</summary>
+    /// <summary>Every format MARS knows the name of is recognized, so Open can explain itself.</summary>
     [Theory]
     [InlineData("run.mzML")]
     [InlineData("run.raw")]
     [InlineData("run.wiff2")]
-    public void TheReadableFormatsAreRecognized(string path) =>
-        Assert.True(SpectrumSources.IsReadable(path));
+    [InlineData("run.lcd")]
+    public void TheKnownFormatsAreRecognized(string path) =>
+        Assert.True(SpectrumSources.IsRecognized(path));
 
     [Theory]
     [InlineData("notes.txt")]
     [InlineData("run.mzXML")]
-    public void AnUnreadableFormatIsNotOffered(string path) =>
-        Assert.False(SpectrumSources.IsReadable(path));
+    public void AnUnknownFormatIsNotRecognized(string path) =>
+        Assert.False(SpectrumSources.IsRecognized(path));
+
+    /// <summary>
+    /// Recognizing a format is not the same as being able to open it. Shimadzu is in the table
+    /// so that a .lcd earns an explanation, but no build carries the reader, so a directory
+    /// scan must not pick one up and a capability list must not advertise it.
+    /// </summary>
+    [Fact]
+    public void ARecognizedFormatWithNoReaderIsNotReadable()
+    {
+        Assert.True(SpectrumSources.IsRecognized("run.lcd"));
+        Assert.False(SpectrumSources.IsReadable("run.lcd"));
+        Assert.DoesNotContain(".lcd", SpectrumSources.ReadableExtensions());
+    }
+
+    /// <summary>mzML is readable in every build; the vendor formats only where they are linked.</summary>
+    [Fact]
+    public void TheCapabilityListMatchesWhatIsLinked()
+    {
+        Assert.Contains(".mzML", SpectrumSources.ReadableExtensions());
+        Assert.Equal(PwizOutput.Available, SpectrumSources.ReadableExtensions().Contains(".raw"));
+        Assert.Equal(PwizOutput.Available, SpectrumSources.IsReadable("run.raw"));
+    }
 
     /// <summary>
     /// A vendor format asked of a build that cannot open it must say so, rather than failing
@@ -102,7 +126,22 @@ public class PwizOutputTest
     public void MzMLIsSupportedWithOrWithoutPwiz()
     {
         Assert.Contains(MarsOutputFormat.MzML, PwizOutput.Supported);
-        Assert.Equal(PwizOutput.Available ? 4 : 1, PwizOutput.Supported.Count);
+        if (!PwizOutput.Available) Assert.Single(PwizOutput.Supported);
+    }
+
+    /// <summary>
+    /// mzMLb is HDF5, and the native library that writes it is published for x64 only. It has
+    /// to be absent from the list on arm64 rather than fail when someone asks for it.
+    /// </summary>
+    [Fact]
+    public void MzMLbIsOfferedOnlyWhereItCanBeWritten()
+    {
+        bool x64 = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+                   == System.Runtime.InteropServices.Architecture.X64;
+
+        Assert.Equal(
+            PwizOutput.Available && x64,
+            PwizOutput.Supported.Contains(MarsOutputFormat.MzMLb));
     }
 
     /// <summary>The formats that drop information say so, so a user is warned rather than surprised.</summary>

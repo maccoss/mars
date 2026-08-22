@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using MARS.Core;
 using MARS.IO;
 
@@ -43,8 +44,52 @@ public static class SpectrumSources
         [".uimf"] = "UIMF",
     };
 
-    /// <summary>True when MARS can open this path at all.</summary>
+    /// <summary>
+    /// Vendors this build carries a reader for AND can run on this machine.
+    /// </summary>
+    /// <remarks>
+    /// Architecture matters, not only the build. Thermo's SDK is managed and runs anywhere;
+    /// Bruker's and Sciex's are native x64, so an arm64 build stages libraries it cannot load.
+    /// Advertising them there would be a promise broken at the moment someone opens a file,
+    /// which is exactly what this list exists to avoid.
+    /// </remarks>
+    private static readonly HashSet<string> LinkedVendors = BuildLinkedVendors();
+
+    private static HashSet<string> BuildLinkedVendors()
+    {
+        var vendors = new HashSet<string>(StringComparer.Ordinal);
+#if !MARS_NO_PWIZ
+        vendors.Add("Thermo");
+
+        bool nativeX64 = RuntimeInformation.ProcessArchitecture == Architecture.X64;
+        if (nativeX64)
+        {
+            vendors.Add("Bruker or Agilent");
+            vendors.Add("Bruker");
+#if MARS_SCIEX
+            vendors.Add("Sciex");
+#endif
+        }
+#endif
+        return vendors;
+    }
+
+    /// <summary>True when this build can actually open the path.</summary>
+    /// <remarks>
+    /// Used for directory scanning, where picking up a file that cannot be opened would turn
+    /// a usable folder into a failed run. A path named explicitly goes through
+    /// <see cref="IsRecognized"/> instead, so that it gets a reason rather than silence.
+    /// </remarks>
     public static bool IsReadable(string path) =>
+        IsNative(path) ||
+        (VendorExtensions.TryGetValue(Path.GetExtension(path), out string? vendor) &&
+         LinkedVendors.Contains(vendor));
+
+    /// <summary>
+    /// True when MARS knows what the format is, whether or not this build can open it. A
+    /// recognized-but-unavailable format earns an explanation from <see cref="Open"/>.
+    /// </summary>
+    public static bool IsRecognized(string path) =>
         IsNative(path) || VendorExtensions.ContainsKey(Path.GetExtension(path));
 
     /// <summary>True when this path is an mzML, which MARS reads itself.</summary>
@@ -101,11 +146,17 @@ public static class SpectrumSources
 #endif
     }
 
-    /// <summary>The vendors this build advertises, for help text and diagnostics.</summary>
+    /// <summary>
+    /// What this build can read, for <c>--version</c>. Only formats it actually carries a
+    /// reader for - a list that promised Shimadzu because the name appears in a table would be
+    /// worse than no list.
+    /// </summary>
     public static IEnumerable<string> ReadableExtensions()
     {
         yield return ".mzML";
-        if (!PwizOutput.Available) yield break;
-        foreach (string extension in VendorExtensions.Keys) yield return extension;
+        foreach (KeyValuePair<string, string> entry in VendorExtensions)
+        {
+            if (LinkedVendors.Contains(entry.Value)) yield return entry.Key;
+        }
     }
 }

@@ -135,6 +135,21 @@ the QC report is drawn in.
   Two mzMLb writes of identical data at the same thread count differ, because the HDF5
   container records things that vary between writes. mzML and mzXML are reproducible.
 
+- **`mars --version` reports what the binary can do.** Vendor reading and the non-mzML
+  outputs depend on how a build was made and where it runs, and two identically named binaries
+  were otherwise indistinguishable until one refused a file:
+
+  ```
+  26.1.0
+  reads:  .mzML, .raw, .wiff, .wiff2, .d, .tdf, .tsf, .baf
+  writes: mzML, mzXML, mzMLb, mgf
+  ```
+
+  It reports what is actually usable rather than what is recognized: a build without
+  pwiz-sharp says `.mzML` and `mzML`, an arm64 build drops Bruker, Sciex and mzMLb because
+  those need native x64 libraries, and `.lcd` is never advertised because no build carries a
+  Shimadzu reader - it is only recognized well enough to be refused with a reason.
+
 ## Bug Fixes
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were

@@ -4,7 +4,9 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using MARS.Core;
+using MARS.Pwiz;
 
 namespace MARS.Cli;
 
@@ -67,6 +69,15 @@ public static class Program
         if (args[0] is "--version" or "-V")
         {
             Console.Out.WriteLine(MarsInfo.Version);
+
+            // What this particular binary can do, not what MARS can do in principle. Vendor
+            // reading and the non-mzML outputs depend on whether the build had a pwiz-sharp
+            // checkout, and there is otherwise no way to tell two identically named binaries
+            // apart until one of them refuses a file.
+            Console.Out.WriteLine(
+                "reads:  " + string.Join(", ", SpectrumSources.ReadableExtensions()));
+            Console.Out.WriteLine(
+                "writes: " + string.Join(", ", PwizOutput.Supported.Select(PwizOutput.Name)));
             return ExitSuccess;
         }
 

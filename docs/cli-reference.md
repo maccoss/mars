@@ -227,6 +227,22 @@ at the same thread count, differ byte-wise, because the HDF5 container records t
 vary between writes. The spectra are the same; the file is not. Use mzML or mzXML where a
 checksum has to match.
 
+### What can this binary do?
+
+`mars --version` reports what the binary in front of you actually carries, which is not a
+property of MARS but of how it was built and where it is running:
+
+```
+26.1.0
+reads:  .mzML, .raw, .wiff, .wiff2, .d, .tdf, .tsf, .baf
+writes: mzML, mzXML, mzMLb, mgf
+```
+
+A build made without pwiz-sharp says `reads: .mzML` and `writes: mzML`. An arm64 build drops
+Bruker, Sciex and mzMLb, because those need native x64 libraries while Thermo's SDK is managed.
+The list is what the binary can do here, not what it recognizes the name of - a `.lcd` is
+understood well enough to be refused with a reason, and is deliberately not advertised.
+
 ### Builds without pwiz
 
 The pwiz reference is optional, because pwiz-sharp has no package feed yet. A MARS built

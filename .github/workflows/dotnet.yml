@@ -42,6 +42,101 @@ jobs:
         working-directory: dotnet
         run: dotnet test --no-build -c Release --logger "console;verbosity=normal"
 
+  # Vendor formats: Thermo, Bruker and Sciex reading, and mzXML / mzMLb / mgf writing.
+  #
+  # Separate from the matrix above because it needs a pwiz-sharp checkout, which is a draft
+  # branch with no package feed. Everything else in this workflow builds the configuration
+  # MARS ships today - mzML only - and that configuration has to keep working, so it stays the
+  # default rather than becoming a special case.
+  #
+  # Windows because it is the only platform where all three vendors work: the Sciex SDK is
+  # Windows-only. Thermo and Bruker also build on Linux; adding that is worth doing once this
+  # one has settled.
+  pwiz:
+    name: Vendor formats (pwiz-sharp)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read the pinned pwiz-sharp commit
+        id: pin
+        shell: bash
+        run: |
+          commit=$(python -c "import json;print(json.load(open('dotnet/pwiz-sharp.json'))['commit'])")
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Pinned to $commit"
+
+      # Keyed on the commit, so a pinned build is fetched once and reused until the pin moves.
+      # The tree is several gigabytes: without this every run would pay for it again.
+      - name: Cache the pwiz checkout
+        id: pwiz-cache
+        uses: actions/cache@v4
+        with:
+          path: pwiz
+          key: pwiz-sharp-${{ steps.pin.outputs.commit }}
+
+      - name: Clone pwiz-sharp at the pin
+        if: steps.pwiz-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # Blobless: the history is not needed, only the tree at one commit. The FULL working
+          # tree is needed though - Bruker reads archives from pwiz_aux and VC90 CRT files from
+          # pwiz_tools/Shared/Lib, and Common.csproj embeds .obo files from pwiz/data/common.
+          git clone --filter=blob:none --no-checkout             https://github.com/ProteoWizard/pwiz.git pwiz
+          cd pwiz
+          git checkout --detach ${{ steps.pin.outputs.commit }}
+
+      # pwiz-sharp does not carry a global.json, so a runner with a newer SDK fails to resolve
+      # one for the nested `dotnet run` that generates the vendor pins. Written here rather
+      # than committed upstream because it is our build's problem to solve.
+      - name: Pin the SDK for pwiz-sharp
+        shell: bash
+        run: |
+          cat > pwiz/pwiz-sharp/global.json <<'JSON'
+          { "sdk": { "version": "8.0.0", "rollForward": "latestFeature" } }
+          JSON
+
+      - name: Build with vendor support
+        working-directory: dotnet
+        shell: bash
+        run: |
+          dotnet build -c Release -warnaserror             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
+
+      - name: Test with vendor support
+        working-directory: dotnet
+        shell: bash
+        run: |
+          dotnet test --no-build -c Release --logger "console;verbosity=normal"             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
+
+      # The formats are the point of the job, so prove the binary can actually produce them
+      # rather than only that the code compiles.
+      - name: Publish and check the formats are offered
+        working-directory: dotnet
+        shell: bash
+        run: |
+          dotnet publish MARS/MARS.csproj -c Release -f net8.0 -r win-x64             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
+
+          cd "$GITHUB_WORKSPACE/vendor-build"
+          capabilities=$(./mars.exe --version)
+          echo "$capabilities"
+
+          # --version reports what THIS binary carries. A build that silently missed
+          # pwiz-sharp still compiles, still runs, and still writes mzML, so without a check
+          # here the job would go green having proved nothing.
+          for expected in .raw .d .wiff2 mzXML mzMLb mgf; do
+            if ! echo "$capabilities" | grep -qF -- "$expected"; then
+              echo "::error::$expected missing - this build did not pick up pwiz-sharp"
+              exit 1
+            fi
+          done
+          echo "Vendor reading and every output format are present."
+
   # Produces the same artifacts a release would, on every push and pull request, so a
   # build is downloadable without cutting a release and so packaging breaks surface here
   # rather than at tag time.

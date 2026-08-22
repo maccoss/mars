@@ -102,15 +102,46 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Released binaries carry the vendor readers, so a downloaded MARS opens a .raw with
+      # nothing else installed. That needs a pwiz-sharp checkout at the pinned commit, because
+      # it is an unmerged draft with no package feed.
+      - name: Read the pinned pwiz-sharp commit
+        id: pin
+        shell: bash
+        run: |
+          commit=$(python -c "import json;print(json.load(open('dotnet/pwiz-sharp.json'))['commit'])")
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pwiz checkout
+        id: pwiz-cache
+        uses: actions/cache@v4
+        with:
+          path: pwiz
+          key: pwiz-sharp-${{ runner.os }}-${{ steps.pin.outputs.commit }}
+
+      - name: Clone pwiz-sharp at the pin
+        if: steps.pwiz-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # Blobless but a full working tree: Bruker reads archives from pwiz_aux and VC90 CRT
+          # files from pwiz_tools/Shared/Lib, and Common.csproj embeds .obo files from
+          # pwiz/data/common.
+          git clone --filter=blob:none --no-checkout             https://github.com/ProteoWizard/pwiz.git pwiz
+          cd pwiz
+          git checkout --detach ${{ steps.pin.outputs.commit }}
+
+      - name: Pin the SDK for pwiz-sharp
+        shell: bash
+        run: |
+          cat > pwiz/pwiz-sharp/global.json <<'JSON'
+          { "sdk": { "version": "8.0.0", "rollForward": "latestFeature" } }
+          JSON
+
       - name: Publish
         working-directory: dotnet
-        run: >
-          dotnet publish MARS/MARS.csproj
-          -c Release -f net8.0 -r ${{ matrix.rid }}
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:DebugType=none
-          -o publish/${{ matrix.rid }}
+        shell: bash
+        run: |
+          dotnet publish MARS/MARS.csproj             -c Release -f net8.0 -r ${{ matrix.rid }}             --self-contained true             -p:PublishSingleFile=true             -p:DebugType=none             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o publish/${{ matrix.rid }}
 
       # Parquet.Net carries a native compression library, so the archive is a binary plus
       # that library rather than a lone executable.
@@ -130,7 +161,24 @@ jobs:
           # it never touches them. Run a command that opens a file and does real work.
           "$bin" verify --help > /dev/null
           "$bin" qc --help > /dev/null
-          echo "Smoke test passed on ${{ matrix.rid }}"
+
+          # A build that silently missed pwiz-sharp compiles, runs and writes mzML, so it
+          # would pass everything above having shipped none of the vendor support. --version
+          # reports what this binary actually carries.
+          capabilities=$("$bin" --version)
+
+          # Only what every runtime identifier can do. Bruker and Sciex ship native x64
+          # libraries and mzMLb needs a native HDF5, so an arm64 artifact honestly reports
+          # fewer of them - osx-arm64 runs this check, and demanding .d here would fail a
+          # release that was working exactly as intended. Thermo's SDK is managed and mzXML is
+          # pure pwiz, so those two prove pwiz-sharp linked in on any target.
+          for expected in .raw mzXML; do
+            if ! echo "$capabilities" | grep -qF -- "$expected"; then
+              echo "::error::$expected missing from ${{ matrix.rid }} - vendor support did not build in"
+              exit 1
+            fi
+          done
+          echo "Smoke test passed on ${{ matrix.rid }}, with vendor support"
 
       - name: Archive (tar.gz)
         if: matrix.archive == 'tar'

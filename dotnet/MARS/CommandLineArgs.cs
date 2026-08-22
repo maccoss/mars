@@ -253,7 +253,7 @@ public sealed class CommandLineArgs
             {
                 files.Add(Path.GetFullPath(pattern));
             }
-            else if (Directory.Exists(pattern) && MARS.Pwiz.SpectrumSources.IsReadable(pattern))
+            else if (Directory.Exists(pattern) && MARS.Pwiz.SpectrumSources.IsRecognized(pattern))
             {
                 // Bruker and Agilent runs are directories, not files. A .d named directly is an
                 // input; a directory that is not a run is handled by --mzml-dir below.

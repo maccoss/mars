@@ -113,11 +113,36 @@ public static partial class PwizOutput
         true;
 #endif
 
-    /// <summary>The formats this build can write, mzML included.</summary>
-    public static IReadOnlyList<MarsOutputFormat> Supported =>
-        Available
-            ? new[] { MarsOutputFormat.MzML, MarsOutputFormat.MzXml, MarsOutputFormat.MzMLb, MarsOutputFormat.Mgf }
-            : new[] { MarsOutputFormat.MzML };
+    /// <summary>
+    /// The formats this build can write here, mzML included.
+    /// </summary>
+    /// <remarks>
+    /// mzMLb is dropped on anything but x64: it is HDF5, and the native library that writes it
+    /// is published for x64 alone. Listing it on arm64 would be a promise broken at the moment
+    /// someone asked for it.
+    /// </remarks>
+    public static IReadOnlyList<MarsOutputFormat> Supported
+    {
+        get
+        {
+            if (!Available) return new[] { MarsOutputFormat.MzML };
+
+            var formats = new List<MarsOutputFormat>
+            {
+                MarsOutputFormat.MzML,
+                MarsOutputFormat.MzXml,
+                MarsOutputFormat.Mgf,
+            };
+
+            if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+                == System.Runtime.InteropServices.Architecture.X64)
+            {
+                formats.Insert(2, MarsOutputFormat.MzMLb);
+            }
+
+            return formats;
+        }
+    }
 
     /// <summary>Parses a format name, case-insensitively. Returns false for anything else.</summary>
     public static bool TryParse(string? name, out MarsOutputFormat format)
