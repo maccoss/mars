@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using MARS.Cli;
 using Xunit;
 
@@ -152,49 +153,86 @@ public class CommandLineArgsTest
         }
     }
 
+    /// <summary>
+    /// Every option each command documents in its own <c>--help</c>, scraped from that help
+    /// text rather than listed here.
+    /// </summary>
+    /// <remarks>
+    /// The first version of this was a hand-written array per command, and it drifted: a
+    /// `--resolution` option was added to the CLI and not to the list, so the check passed
+    /// while that option was in fact being rejected as a typo. Reading the help text means the
+    /// test cannot fall behind the thing it is testing - if an option is documented, it is
+    /// checked.
+    /// </remarks>
     public static TheoryData<string, string[]> DocumentedOptions()
     {
         var data = new TheoryData<string, string[]>();
-
-        data.Add("qc", new[]
-        {
-            "--mzml-dir", ".", "--prism-csv", "lib.csv", "--library", "lib.blib",
-            "--diann-report", "report.parquet", "--tolerance", "0.3", "--tolerance-ppm", "10",
-            "--min-intensity", "500", "--max-isolation-window", "8",
-            "--temperature-dir", ".", "--output", "out.txt", "--html-report", "out.html",
-            "--no-html-report", "--by-file", "--verbose", "--rt-window", "0.083",
-            "--no-dedupe-library",
-        });
-
-        data.Add("calibrate", new[]
-        {
-            "--mzml-dir", ".", "--prism-csv", "lib.csv", "--library", "lib.blib",
-            "--diann-report", "report.parquet", "--rt-window", "0.083", "--no-dedupe-library",
-            "--tolerance", "0.3", "--tolerance-ppm", "10", "--min-intensity", "500",
-            "--max-isolation-window", "8", "--temperature-dir", ".",
-            "--output-dir", ".", "--model-path", "m.json", "--report", "r.txt",
-            "--dump-matches", "d.csv", "--dump-predictions", "p.csv",
-            "--no-html-report", "--html-report", "out.html",
-            "--n-estimators", "100", "--max-depth", "6", "--learning-rate", "0.1",
-            "--seed", "42", "--validation-split", "0.2", "--cv-folds", "5",
-            "--robust", "trim", "--robust-sigma", "3", "--max-training-rows", "0",
-            "--threads", "4", "--min-training-rows", "1000", "--no-recalibrate",
-            "--python-compat", "--on-reorder", "warn", "--verbose",
-        });
-
-        data.Add("apply", new[]
-        {
-            "--model", "m.json", "--mzml-dir", ".", "--output-dir", ".",
-            "--max-isolation-window", "8", "--python-compat", "--on-reorder", "warn",
-            "--temperature-dir", ".", "--validate", "--threads", "4", "--verbose",
-        });
-
-        data.Add("verify", new[]
-        {
-            "--keep", "--output", "out.mzML", "--threads", "4", "--check-offsets", "10",
-            "--verbose",
-        });
-
+        foreach (string command in new[] { "qc", "calibrate", "apply", "verify" })
+            data.Add(command, OptionsFromHelp(command));
         return data;
+    }
+
+    /// <summary>Pulls the long option names out of a command's help text.</summary>
+    private static string[] OptionsFromHelp(string command)
+    {
+        string help = CaptureHelp(command);
+        var options = new List<string>();
+
+        foreach (Match match in Regex.Matches(help, @"--([a-z0-9][a-z0-9-]*)"))
+        {
+            string name = match.Groups[1].Value;
+
+            // "--help" would print and exit, and the file arguments are supplied by the caller.
+            if (name is "help" or "mzml" or "input") continue;
+            if (options.Contains("--" + name)) continue;
+
+            options.Add("--" + name);
+
+            // A value for anything that takes one. The help text shows a placeholder in angle
+            // brackets after options that do; flags have nothing after them.
+            if (Regex.IsMatch(help, Regex.Escape("--" + name) + @"[= ]<"))
+                options.Add(ValueFor(name));
+        }
+
+        return options.ToArray();
+    }
+
+    /// <summary>A value each option will accept, so parsing gets far enough to matter.</summary>
+    private static string ValueFor(string name) => name switch
+    {
+        "resolution" => "auto",
+        "robust" => "trim",
+        "on-reorder" => "clamp",
+        "output-format" => "mzML",
+        var n when n.Contains("dir") => ".",
+        var n when n.Contains("csv") => "lib.csv",
+        var n when n.Contains("parquet") || n.Contains("report") => "report.parquet",
+        var n when n.Contains("library") => "lib.blib",
+        var n when n.Contains("model") => "model.json",
+        var n when n.Contains("path") || n.Contains("output") => "out.txt",
+        _ => "1",
+    };
+
+    private static string CaptureHelp(string command)
+    {
+        TextWriter original = Console.Error;
+        using var captured = new StringWriter();
+        Console.SetError(captured);
+        try
+        {
+            Run(command, new[] { command, "--help" });
+        }
+        catch (Exception)
+        {
+            // A command that refuses to run without inputs has still printed its help.
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+
+        string help = captured.ToString();
+        Assert.False(string.IsNullOrWhiteSpace(help), $"mars {command} --help printed nothing");
+        return help;
     }
 }

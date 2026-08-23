@@ -91,6 +91,12 @@ public static class CalibrateCommand
 
         // Everything is read; refuse a typo now rather than after minutes of work, or worse,
         // after writing corrected files from a run that silently used a default.
+        // Read here, used further down once the readers are open and can say what analyzer
+        // they saw. RejectUnknown only knows an option is real because something asked for it,
+        // so an option resolved later has to be touched before the check or it is reported as
+        // a typo.
+        ResolutionMode.Touch(args);
+
         args.RejectUnknown();
 
         Log.Info($"Found {mzmlFiles.Count} mzML file(s) to process");
@@ -157,6 +163,7 @@ public static class CalibrateCommand
         }
 
         Log.Info($"Total matches: {table.Count:N0} from {matcher.Statistics.SpectraSeen:N0} spectra");
+        CheckTolerance(table, matchOptions);
         Log.Info($"  unique library precursors matched: {matcher.Statistics.UniqueEntriesMatched:N0} " +
                  $"of {library.EntryCount:N0}");
 
@@ -258,6 +265,27 @@ public static class CalibrateCommand
         return Program.ExitSuccess;
     }
 
+
+    /// <summary>
+    /// Checks the matched error against the window it was matched in, once there is data to
+    /// check with. Detection can come up empty - a vendor model pwiz does not recognise leaves
+    /// no analyzer term at all - and this catches the consequence rather than the cause.
+    /// </summary>
+    internal static void CheckTolerance(MatchTable table, MatchOptions options)
+    {
+        if (table.Count == 0) return;
+
+        ReadOnlySpan<double> delta = table.DeltaMz.Items.AsSpan(0, table.Count);
+        double mad = MarsStatistics.Summarize(delta).Mad;
+
+        double[] fragmentMz = table.Column(MarsFeature.FragmentMz).Items;
+        var sample = new double[table.Count];
+        Array.Copy(fragmentMz, sample, table.Count);
+        Array.Sort(sample);
+        double median = sample[sample.Length / 2];
+
+        ResolutionMode.WarnIfToleranceLooksTooWide(options, mad, median, Log.Warn);
+    }
     /// <summary>
     /// Whether ion injection time is worth using as a feature.
     /// </summary>

@@ -150,6 +150,18 @@ the QC report is drawn in.
   those need native x64 libraries, and `.lcd` is never advertised because no build carries a
   Shimadzu reader - it is only recognized well enough to be refused with a reason.
 
+- **MARS warns when the matching window is far wider than the error in the data.** A tolerance
+  set for the wrong instrument fails silently - the window fills with peaks that are not the
+  fragment, and the run completes and reports numbers regardless - where one that is too narrow
+  fails loudly with too few matches. Only the silent direction needs catching, so after matching
+  MARS compares the window against the median absolute error and says so when it is more than
+  50x. Trap data at its correct 0.3 Th sits around 4x, so this cannot fire on the case MARS was
+  built for.
+
+  Prompted by a real case: a ZenoTOF 8600 reads correctly but reports no analyzer, because
+  pwiz's Sciex model table stops at the 7600. MARS then has nothing to detect from and falls
+  back to 0.3 Th - about 760 ppm at m/z 400 on a TOF. See `docs/open-questions.md`.
+
 ## Bug Fixes
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were
@@ -181,6 +193,15 @@ the QC report is drawn in.
   A test class now runs the report writer, the model round-trip and the library reader under
   `de-DE`, and the test host is built culture-capable so this runs in CI too - the
   configuration where nobody would otherwise notice.
+
+- **`--resolution` was rejected as a typo on `qc` and `calibrate`.** Moving analyzer detection
+  onto the readers meant the option was read after the unknown-option check rather than before
+  it, and that check learns an option is real by watching it be read. Exactly the hazard its own
+  documentation warns about. The options it resolves are now declared before the check runs.
+
+  The test that exists to prevent this did not, because its list of each command's options was
+  hand-written and had drifted - `--resolution` was added to the CLI and not to the list. It now
+  scrapes each command's own `--help` output, so it cannot fall behind what it is testing.
 
 - **A mistyped option crashed instead of reporting an error.** The refusal added above is
   raised by throwing, and `Program` was not catching it, so a typo produced a stack trace

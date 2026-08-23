@@ -35,6 +35,13 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
     private readonly MSData _msd = new();
     private readonly ISpectrumList _spectra;
 
+    /// <summary>
+    /// Registers the vendor readers before any instance exists, so that constructing one is
+    /// enough - no caller has to remember. The runtime runs this before the first instance
+    /// constructor.
+    /// </summary>
+    static PwizSpectrumSource() => VendorReaders.EnsureRegistered();
+
     public PwizSpectrumSource(string path)
     {
         Path = path;

@@ -383,3 +383,54 @@ vendor library and would stay bundled.
 **`mars --version` already reports what a binary carries**, and should keep telling the truth
 across the change: a MARS that borrows its readers from Skyline and cannot find one has to say
 so there, rather than at the moment somebody opens a file.
+
+## The ZenoTOF 8600 reads, but reports no analyzer
+
+**Measured on real data, and it needs an upstream fix.**
+
+A ZenoTOF 8600 `.wiff2` opens and reads correctly: 300,570 spectra, 3,000 MS2 sampled with
+11.7 million peaks across 429 distinct isolation windows, isolation window present on every
+one. The bundled Sciex SDK handles the instrument.
+
+What it does not do is say what recorded it. pwiz's Sciex model table stops at `ZENOTOF7600`,
+so an 8600 falls off the end:
+
+```
+[Reader_Sciex.FillInMetadata] unable to determine instrument model
+    (unknown instrument type: ZenoTOF 8600 System)
+```
+
+That is non-fatal by design, but the consequence is not cosmetic. With the model unrecognised
+the reader emits an instrument configuration with **no components at all** - `IC1: (no
+components)` - and Sciex writes no Thermo-style filter string. MARS therefore has nothing to
+classify from, reports `Unknown`, and falls back to the unit-resolution default of 0.3 Th.
+On a TOF that is about **760 ppm at m/z 400**, against real error of a few ppm.
+
+### The upstream fix
+
+One line in `pwiz/src/Vendor/Sciex/Reader_Sciex_Detail.cs`, alongside the existing entry:
+
+```csharp
+if (n.Contains("ZENOTOF7600", StringComparison.Ordinal)) return SciexInstrumentModel.ZenoTOF7600;
+```
+
+An 8600 case, and a `SciexInstrumentModel` member mapping to `MS_time_of_flight` the way
+`ZenoTOF7600` does. Worth raising on
+[PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178), because every tool reading 8600
+data through pwiz-sharp inherits this, not only MARS.
+
+### What MARS does about it meanwhile
+
+Detection cannot be fixed from MARS's side - there is genuinely no analyzer information in the
+file as pwiz presents it. So MARS checks the consequence instead, after matching, when the data
+can answer: if the matching window is more than 50x the median absolute error actually found,
+it says so. A window that wide is the signature of a tolerance set for the wrong instrument.
+
+The asymmetry is what makes this worth doing. A tolerance that is too narrow fails loudly, with
+too few matches to train on. One that is too wide fails silently - it fills with peaks that are
+not the fragment, and the run completes and reports numbers regardless. Only the silent
+direction needs a detector.
+
+The threshold is loose deliberately: trap data at its correct 0.3 Th sits around 4x, so this
+cannot fire on the case MARS was built for. Verified both ways - silent on a Stellar run at
+0.3 Th, and firing on high-resolution data forced to the trap tolerance.

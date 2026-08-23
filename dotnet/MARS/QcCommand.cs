@@ -84,6 +84,12 @@ public static class QcCommand
         var librarySource = LibrarySource.From(args);
 
         // Everything is read; refuse a typo now rather than after minutes of work.
+        // Read here, used further down once the readers are open and can say what analyzer
+        // they saw. RejectUnknown only knows an option is real because something asked for it,
+        // so an option resolved later has to be touched before the check or it is reported as
+        // a typo.
+        ResolutionMode.Touch(args);
+
         args.RejectUnknown();
 
         var runNames = new List<string>();
@@ -165,6 +171,8 @@ public static class QcCommand
                 text.AppendLine();
             }
         }
+
+        CalibrateCommand.CheckTolerance(combined, matchOptions);
 
         if (combined.Count == 0)
         {

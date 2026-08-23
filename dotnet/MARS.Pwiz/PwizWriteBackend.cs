@@ -18,12 +18,14 @@ namespace MARS.Pwiz;
 /// </remarks>
 internal static class PwizWriteBackend
 {
+    /// <summary>Same reason as <c>PwizSpectrumSource</c>'s: registration should not be a thing
+    /// a caller can forget.</summary>
+    static PwizWriteBackend() => VendorReaders.EnsureRegistered();
+
     public static PwizWriteResult Write(PwizWriteRequest request)
     {
         string? directory = Path.GetDirectoryName(Path.GetFullPath(request.OutputPath));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-        VendorReaders.EnsureRegistered();
 
         using var msd = new MSData();
         // Combined the same way the reader does, so that what is written matches what was
