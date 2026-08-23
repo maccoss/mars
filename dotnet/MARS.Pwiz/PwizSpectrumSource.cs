@@ -34,6 +34,7 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
 {
     private readonly MSData _msd = new();
     private readonly ISpectrumList _spectra;
+    private readonly IVendorCentroidingSpectrumList? _centroider;
 
     /// <summary>
     /// Registers the vendor readers before any instance exists, so that constructing one is
@@ -57,6 +58,8 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
         ReaderList.Default.Read(path, _msd, new ReaderConfig { CombineIonMobilitySpectra = true });
         _spectra = _msd.Run.SpectrumList
                    ?? throw new InvalidDataException($"No spectra in {path}.");
+
+        _centroider = _spectra as IVendorCentroidingSpectrumList;
 
         AcquisitionStartTime = StartTimeOf(_msd);
         Analyzer = DetectAnalyzer(_msd, _spectra);
@@ -82,9 +85,38 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
             int level = probe.Params.CvParamValueOrDefault(CVID.MS_ms_level, 0);
             if (msLevel.HasValue && level != msLevel.Value) continue;
 
-            Spectrum spectrum = _spectra.GetSpectrum(i, getBinaryData: true);
+            Spectrum spectrum = Read(i);
             if (Fill(record, spectrum, level)) yield return record;
         }
+    }
+
+    /// <summary>
+    /// Reads one spectrum, centroided by the vendor when the run is stored as profile.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Profile data is a sampled curve, not a peak list. A Sciex ZenoTOF writes it that way:
+    /// 1,619 points in one MS2, evenly spaced at 0.00233 Th, which is 16 ppm at m/z 142. MARS
+    /// measures mass error by taking the most intense peak inside a tolerance window, so on
+    /// profile data the answer is quantised to the sampling grid - a floor several times larger
+    /// than the error an instrument like this actually has. The space-charge features fare
+    /// worse: they count peaks around a match, and on profile they would count samples of the
+    /// same ion.
+    /// </para>
+    /// <para>
+    /// The vendor's own centroiding is used rather than a peak picker of ours, because the
+    /// vendor knows its detector. pwiz exposes it through
+    /// <see cref="IVendorCentroidingSpectrumList"/>, which the Sciex list implements.
+    /// </para>
+    /// </remarks>
+    private Spectrum Read(int index)
+    {
+        if (_centroider is null) return _spectra.GetSpectrum(index, getBinaryData: true);
+
+        Spectrum spectrum = _spectra.GetSpectrum(index, getBinaryData: true);
+        return spectrum.Params.HasCVParam(CVID.MS_profile_spectrum)
+            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true)
+            : spectrum;
     }
 
     public void Dispose()

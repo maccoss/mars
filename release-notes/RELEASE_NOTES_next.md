@@ -162,6 +162,23 @@ the QC report is drawn in.
   pwiz's Sciex model table stops at the 7600. MARS then has nothing to detect from and falls
   back to 0.3 Th - about 760 ppm at m/z 400 on a TOF. See `docs/open-questions.md`.
 
+- **Profile spectra are centroided by the vendor before use.** Sciex writes profile data - the
+  ZenoTOF 8600 file is 1,619 evenly spaced points in one MS2, at 0.00233 Th, which is 16 ppm at
+  m/z 142. MARS measures mass error by taking the most intense peak in a window, so on a sampled
+  curve the answer is quantised to the grid and the floor on measurable error would be several
+  times the error the instrument has; the fourteen space-charge features would be counting
+  samples of one ion rather than neighbouring ions.
+
+  pwiz exposes the vendor's own algorithm, and MARS uses it - "ABI/Analyst peak picking" here,
+  turning that spectrum into 210 peaks. Applied on reading and writing alike, because the model
+  is fitted on peak lists and correcting sampled curves with it would put every feature outside
+  what it saw. Only when the spectrum declares itself profile: Thermo and Bruker already deliver
+  centroids and are untouched.
+
+  A corrected file written from profile input therefore comes out centroided. That is what
+  `msconvert --filter peakPicking` does routinely, but it is a change to the data rather than
+  only to the m/z values.
+
 ## Bug Fixes
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were

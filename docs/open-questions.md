@@ -434,3 +434,35 @@ direction needs a detector.
 The threshold is loose deliberately: trap data at its correct 0.3 Th sits around 4x, so this
 cannot fire on the case MARS was built for. Verified both ways - silent on a Stellar run at
 0.3 Th, and firing on high-resolution data forced to the trap tolerance.
+
+## Profile data is centroided by the vendor
+
+**Settled.** Sciex writes profile spectra, and MARS asks the vendor to centroid them before
+matching or correcting anything.
+
+The ZenoTOF 8600 file is stored as profile: `profile=True`, 1,619 points in one MS2, evenly
+spaced at 0.00233 Th. That spacing is 16 ppm at m/z 142, which matters because MARS measures
+mass error by taking the most intense peak inside a tolerance window - on a sampled curve the
+answer is quantised to the grid, so the floor on measurable error would be several times the
+error the instrument actually has. The fourteen space-charge features fare worse still: they
+count the peaks around a match, and on profile they would count samples of the same ion.
+
+pwiz exposes the vendor's own algorithm through `IVendorCentroidingSpectrumList`, which
+`SpectrumList_Sciex` implements as "ABI/Analyst peak picking". The vendor knows its detector,
+so that is preferred over a peak picker of ours. On the first MS2 of that file it turns 1,619
+points into **210**, and across 200 MS2 the average falls from about 3,900 samples to 801
+peaks.
+
+Applied on **both** paths, reading and writing. They have to agree: the model is fitted on peak
+lists, and correcting sampled curves with it would put every feature far outside anything it
+saw in training.
+
+**Only when the spectrum says it is profile.** Thermo and Bruker already deliver centroids -
+an Astral run reads `centroid=True`, 139 peaks, and passes through untouched - so this changes
+nothing for them.
+
+One consequence worth being explicit about: a corrected file written from profile input comes
+out **centroided**, because that is what was modelled. That is what `msconvert --filter
+peakPicking` does routinely and what DIA-NN and Skyline want, but it is a real change to the
+data rather than only to the m/z values, and it is the one case where MARS's output differs
+from its input in more than the numbers it set out to correct.

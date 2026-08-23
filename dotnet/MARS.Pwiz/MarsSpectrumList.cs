@@ -57,6 +57,7 @@ internal sealed class MarsSpectrumList : SpectrumListBase
     private const int MaxBatch = 256;
 
     private readonly ISpectrumList _inner;
+    private readonly IVendorCentroidingSpectrumList? _centroider;
     private readonly SpectrumCorrector? _corrector;
     private readonly TemperatureSet? _temperatures;
     private readonly double? _acquisitionStart;
@@ -75,6 +76,7 @@ internal sealed class MarsSpectrumList : SpectrumListBase
         double? acquisitionStart, TemperatureSet? temperatures, int threads)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        _centroider = inner as IVendorCentroidingSpectrumList;
         _corrector = calibrator is null ? null : new SpectrumCorrector(calibrator, options);
         _acquisitionStart = acquisitionStart;
         _temperatures = temperatures;
@@ -128,6 +130,26 @@ internal sealed class MarsSpectrumList : SpectrumListBase
             : Sequential(index, getBinaryData);
     }
 
+    /// <summary>
+    /// Reads one spectrum, centroided by the vendor when the run is stored as profile.
+    /// </summary>
+    /// <remarks>
+    /// The reader centroids too, and both have to, or the model would be fitted on peak lists
+    /// and applied to sampled curves. The features it is fitted on - fourteen of them counted
+    /// from the peaks around a match - mean nothing on profile samples of the same ion, so
+    /// training on one and correcting the other would put the model far outside anything it
+    /// had seen.
+    /// </remarks>
+    private Spectrum Read(int index)
+    {
+        Spectrum spectrum = _inner.GetSpectrum(index, getBinaryData: true);
+        if (_centroider is null) return spectrum;
+
+        return spectrum.Params.HasCVParam(CVID.MS_profile_spectrum)
+            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true)
+            : spectrum;
+    }
+
     protected override void DisposeCore() => _inner.Dispose();
 
     /// <summary>Hands over a spectrum the batch already corrected, and releases the slot.</summary>
@@ -167,7 +189,7 @@ internal sealed class MarsSpectrumList : SpectrumListBase
 
         long readStart = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0; i < _batchCount; i++)
-            _batch[i] = _inner.GetSpectrum(start + i, getBinaryData: true);
+            _batch[i] = Read(start + i);
         AddElapsed(ref _readerTicks, readStart);
 
         long seen = 0, corrected = 0, fixes = 0, reverted = 0;
@@ -204,7 +226,7 @@ internal sealed class MarsSpectrumList : SpectrumListBase
     private Spectrum Sequential(int index, bool getBinaryData)
     {
         long readStart = System.Diagnostics.Stopwatch.GetTimestamp();
-        Spectrum spectrum = _inner.GetSpectrum(index, getBinaryData);
+        Spectrum spectrum = getBinaryData ? Read(index) : _inner.GetSpectrum(index, false);
         AddElapsed(ref _readerTicks, readStart);
 
         if (_corrector is null || !getBinaryData) return spectrum;
