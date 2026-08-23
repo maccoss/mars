@@ -161,10 +161,49 @@ public sealed class MatchTable
         double[] values = column.Items;
         for (int i = 0; i < column.Count; i++)
         {
-            if (!double.IsNaN(values[i])) return true;
+            if (double.IsFinite(values[i])) return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// True when this column's finite values are not all the same.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the whole matched column rather than a sample of it. An ion trap holds its
+    /// injection time at the method's ceiling for as long as the trap does not fill, which on
+    /// a gradient means the entire void volume - tens of thousands of spectra before anything
+    /// elutes. A run sampled only at the head therefore looks constant no matter how much it
+    /// varies later, and on a Stellar it varies a great deal: a standard 4 m/z DIA run of HeLa
+    /// carries 65,059 distinct injection times over 97,500 MS2, two thirds of them off the
+    /// ceiling, with the first at spectrum 9,253.
+    /// </remarks>
+    public bool Varies(MarsFeature feature)
+    {
+        GrowableArray<double>? column = _columns[(int)feature];
+        if (column is null) return false;
+
+        double[] values = column.Items;
+        double first = double.NaN;
+        double low = double.MaxValue;
+        double high = double.MinValue;
+
+        for (int i = 0; i < column.Count; i++)
+        {
+            double v = values[i];
+            if (!double.IsFinite(v)) continue;
+            if (double.IsNaN(first)) first = v;
+            if (v < low) low = v;
+            if (v > high) high = v;
+        }
+
+        if (double.IsNaN(first)) return false;
+
+        // Relative, so it is not a statement about the units. Orders of magnitude tighter
+        // than any real gain control - a trap's injection times differ by whole milliseconds.
+        double scale = Math.Abs(high) > 0 ? Math.Abs(high) : 1.0;
+        return (high - low) / scale > 1e-6;
     }
 
     /// <summary>True when every row has a finite value in this column.</summary>

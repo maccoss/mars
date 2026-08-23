@@ -110,6 +110,14 @@ theoretical value, modifications included.
 > modifications, so every fragment of a modified peptide that spans the modified residue gets
 > a theoretical m/z wrong by the modification mass.
 
+With no `Modifications` table to read, MARS falls back to the mass deltas written into the
+modified sequence itself - `M[+15.9949]` gives one, `M[Carbamidomethyl]` and `M(unimod:35)`
+name a modification without saying what it weighs. Where an entry carries a modification MARS
+cannot weigh, its recorded m/z is used as-is rather than recomputed, and the count of such
+entries is reported. Recomputing from a sequence with a modification silently dropped does not
+produce a missing answer, it produces a confident wrong one: the residue keeps its unmodified
+mass and every fragment past that position is off by the delta.
+
 **Peaks the library does not annotate are skipped by default.** There is no way to know which
 fragment ion an unannotated peak is, so its only available m/z is the observed one. A library
 with hundreds of unannotated peaks per spectrum would swamp the real fragments with rows

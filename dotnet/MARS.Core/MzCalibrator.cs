@@ -653,18 +653,38 @@ public sealed class MzCalibrator
 
         if (table.AnyFinite(MarsFeature.AbsoluteTime)) active.Add(MarsFeature.AbsoluteTime);
 
+        // The injection time is a feature only where it moves. On an instrument that
+        // accumulates for a fixed period it never does, and then it is a constant a tree
+        // cannot split on, while tic_injection_time is log_tic rescaled - a duplicate that
+        // splits permutation importance with the feature it duplicates.
+        //
+        // Decided here, over every matched row, rather than from a sample taken before
+        // matching. A trap sits at its ceiling until the trap actually fills, so any run
+        // judged on its first few hundred spectra reads as constant whatever it does later.
         if (table.AnyFinite(MarsFeature.InjectionTime))
         {
-            active.Add(MarsFeature.InjectionTime);
-            AddIfPresent(table, active, MarsFeature.TicInjectionTime);
-            AddIfPresent(table, active, MarsFeature.FragmentIons);
-            foreach (MarsFeature f in MarsFeatures.NeighborFeatures) AddIfPresent(table, active, f);
-            foreach (MarsFeature f in MarsFeatures.RatioFeatures) AddIfPresent(table, active, f);
+            if (table.Varies(MarsFeature.InjectionTime))
+            {
+                active.Add(MarsFeature.InjectionTime);
+                AddIfPresent(table, active, MarsFeature.TicInjectionTime);
+            }
+            else
+            {
+                log?.Invoke(
+                    "  ion injection time is the same on every matched spectrum; injection_time "
+                    + "and tic_injection_time are off. The ion-population features stay: a "
+                    + "constant scales them without flattening them.");
+            }
         }
-        else
-        {
-            log?.Invoke("No spectrum reported an ion injection time; skipping the injection-time features");
-        }
+
+        // Kept whenever they were collected and hold anything, which is the matcher's decision
+        // rather than this one. They are scaled by the injection time but are not it: a run
+        // with a constant injection time still has a varying peak neighbourhood, and dropping
+        // these along with the injection time costs most of the correction on exactly the
+        // instruments that accumulate for a fixed period.
+        AddIfPresent(table, active, MarsFeature.FragmentIons);
+        foreach (MarsFeature f in MarsFeatures.NeighborFeatures) AddIfPresent(table, active, f);
+        foreach (MarsFeature f in MarsFeatures.RatioFeatures) AddIfPresent(table, active, f);
 
         AddIfPresent(table, active, MarsFeature.Rfa2Temp);
         AddIfPresent(table, active, MarsFeature.Rfc2Temp);
@@ -731,42 +751,6 @@ public sealed class MzCalibrator
         }
 
         return kept.ToArray();
-    }
-
-    /// <summary>
-    /// Deterministic train/validation split. sklearn's train_test_split permutation cannot
-    /// be reproduced outside sklearn, so this uses a seeded Fisher-Yates over XorShift64.
-    /// The split differs from the Python one row for row; the reported validation error is
-    /// still an honest held-out estimate.
-    /// </summary>
-    private static (int[] Train, int[] Validation) SplitTrainValidation(int n, CalibrationOptions options)
-    {
-        var order = new int[n];
-        for (int i = 0; i < n; i++) order[i] = i;
-
-        if (options.ValidationSplit <= 0)
-            return (order, Array.Empty<int>());
-
-        var rng = new XorShift64((ulong)options.Seed);
-        for (int i = n - 1; i > 0; i--)
-        {
-            int j = (int)(rng.Next() % (ulong)(i + 1));
-            (order[i], order[j]) = (order[j], order[i]);
-        }
-
-        int validationCount = (int)Math.Round(n * options.ValidationSplit);
-        validationCount = Math.Clamp(validationCount, 0, n - 1);
-
-        var validation = new int[validationCount];
-        var train = new int[n - validationCount];
-        Array.Copy(order, 0, validation, 0, validationCount);
-        Array.Copy(order, validationCount, train, 0, train.Length);
-
-        // Restore ascending row order within each side so downstream accumulation order is
-        // a function of the data, not of the shuffle.
-        Array.Sort(validation);
-        Array.Sort(train);
-        return (train, validation);
     }
 
     /// <summary>
@@ -865,6 +849,8 @@ public sealed class MzCalibrator
             ValidationRmse = validationIndex.Length > 0 ? MarsStatistics.Rms(residualsValidation) : double.NaN,
             Before = MarsStatistics.Summarize(y),
             After = MarsStatistics.Summarize(after),
+            BeforePpm = ppmScale is null ? null : SummarizePpm(y, ppmScale),
+            AfterPpm = ppmScale is null ? null : SummarizePpm(after, ppmScale),
             PermutationImportance = ComputePermutationImportance(x, y, options),
             SplitCount = ComputeSplitCounts(),
         };

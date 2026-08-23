@@ -142,9 +142,9 @@ public static class QcCommand
         }
         else
         {
-            bool injectionTimeAvailable = CalibrateCommand.UseInjectionTime(
+            InjectionTimeUse injectionTime = CalibrateCommand.ReportInjectionTime(
                 CalibrateCommand.ProbeInjectionTime(sourceByFile[mzmlFiles[0]]));
-            collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
+            collect = FragmentMatcher.CollectedFeatures(injectionTime, anyRfa2, anyRfc2);
         }
 
         var combined = new MatchTable(collect, keepDetail: !noHtmlReport);

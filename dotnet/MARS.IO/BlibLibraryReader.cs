@@ -98,6 +98,7 @@ public static class BlibLibraryReader
         var mzBuffer = new double[512];
         var intensityBuffer = new float[512];
         long entriesWithoutPeaks = 0, recalculated = 0, annotated = 0, unannotatedSkipped = 0;
+        long entriesWithUnweighedMods = 0;
 
         foreach (SqliteRow row in database.Scan(refSpectraPeaks))
         {
@@ -120,14 +121,21 @@ public static class BlibLibraryReader
             }
 
             string sequenceForMass = meta.ModifiedSequence.Length > 0 ? meta.ModifiedSequence : meta.PeptideSequence;
-            (string stripped, List<(int, double)> parsedMods) = PeptideMass.SplitModifiedSequence(sequenceForMass);
+            (string stripped, List<(int, double)> parsedMods, int unweighedMods) =
+                PeptideMass.SplitModifiedSequence(sequenceForMass);
             if (stripped.Length == 0) stripped = meta.PeptideSequence;
 
             // Prefer the Modifications table, which stores exact numeric deltas by position.
-            List<(int Position, double Mass)>? modifications =
-                modificationsById.TryGetValue(id, out List<(int, double)>? fromTable) && fromTable.Count > 0
-                    ? fromTable
-                    : parsedMods;
+            bool haveTable = modificationsById.TryGetValue(id, out List<(int, double)>? fromTable) &&
+                             fromTable.Count > 0;
+            List<(int Position, double Mass)>? modifications = haveTable ? fromTable : parsedMods;
+
+            // A modification named rather than weighed - C[Carbamidomethyl] - has no mass here.
+            // With no Modifications table to fall back on, a recalculated fragment would be
+            // computed from the unmodified residue and be wrong by the delta, so keep the m/z
+            // the library recorded instead.
+            bool canRecalculate = haveTable || unweighedMods == 0;
+            if (!canRecalculate) entriesWithUnweighedMods++;
 
             annotationsById.TryGetValue(id, out Dictionary<int, (char IonType, int IonNumber, int Charge)>? annotations);
 
@@ -154,7 +162,7 @@ public static class BlibLibraryReader
                     charge = annotation.Charge > 0 ? annotation.Charge : 1;
                     annotated++;
 
-                    if (recalculateFragmentMz && ionType is 'b' or 'y' && ionNumber > 0)
+                    if (recalculateFragmentMz && canRecalculate && ionType is 'b' or 'y' && ionNumber > 0)
                     {
                         double theoretical = PeptideMass.FragmentMz(stripped, ionType, ionNumber, charge, modifications);
                         if (!double.IsNaN(theoretical) && theoretical > 0)
@@ -184,6 +192,13 @@ public static class BlibLibraryReader
             log?.Invoke($"  {unannotatedSkipped:N0} unannotated peaks skipped");
         if (entriesWithoutPeaks > 0)
             log?.Invoke($"  {entriesWithoutPeaks:N0} spectra skipped for missing or mismatched peak arrays");
+
+        if (entriesWithUnweighedMods > 0)
+        {
+            log?.Invoke(
+                $"  {entriesWithUnweighedMods:N0} entries name a modification without giving its " +
+                "mass and have no Modifications table; their recorded fragment m/z is used as-is");
+        }
 
         if (annotated == 0)
         {

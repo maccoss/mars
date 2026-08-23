@@ -616,7 +616,7 @@ Correction is `corrected = observed - PredictError(features)`, with the sign con
 fixed by the label definition above: the label is `observed - theoretical`, so the
 predicted error is subtracted. Get this wrong and the MAD roughly doubles instead of
 halving, which is at least a loud failure. Measured on the reference cohort it halves:
-0.0800 to 0.0469 Th on the written files.
+0.0800 to 0.0464 Th on the written files.
 
 **Requirement:** the corrected m/z array must remain **strictly ascending**. A
 per-peak correction can in principle reorder adjacent peaks. mzML consumers assume
@@ -701,8 +701,8 @@ assert the m/z arrays are bit-identical. Run once with `--threads 1` and once wi
 ## 7. Performance requirements
 
 Measured on the reference Stellar cohort: 5 files, 6.0 GB of input, 565,498 MS2
-spectra, 57.0M MS2 peaks per file, 352,349 training rows, 22 features. Machine: 16
-logical cores, NVMe.
+spectra, 57.0M MS2 peaks per file, 352,349 training rows, 20 features - 22 is the maximum
+and this cohort has no temperature logs. Machine: 16 logical cores, NVMe.
 
 | Stage | Target | Measured |
 |---|---|---|
@@ -822,7 +822,8 @@ objective: different quantile cut points, a different train/test partition, and
 different tie-breaking in split selection. The 5% figure is kept as an engineering
 margin on that, not as a statistical bound.
 
-Measured on the reference Stellar cohort, all 22 features active:
+Measured on the reference Stellar cohort, all 20 features active (22 is the maximum; the two
+temperature features need logs this cohort does not have):
 
 | Metric | Python | C# | Ratio | Gate |
 |---|---|---|---|---|
@@ -859,20 +860,36 @@ Run as `mars qc` against each set of outputs with the same library and tolerance
 
 | Measured on the written files | Uncorrected | Python-corrected | C#-corrected |
 |---|---|---|---|
-| Fragments matched | 352,349 | 358,296 | 358,340 |
-| Mean delta m/z | −0.0134 Th | −0.0063 Th | **−0.0057 Th** |
-| Median delta m/z | −0.0082 Th | −0.0055 Th | **−0.0048 Th** |
-| Std delta m/z | 0.1180 Th | 0.0884 Th | **0.0883 Th** |
-| MAD delta m/z | 0.0800 Th | 0.0471 Th | **0.0469 Th** |
-| RMS delta m/z | 0.1188 Th | 0.0886 Th | **0.0885 Th** |
-| Median delta ppm | −9.92 | — | **−6.13** |
+| Fragments matched | 352,349 | 358,320 | **358,334** |
+| Mean delta m/z | −0.0134 Th | −0.0052 Th | **−0.0023 Th** |
+| Median delta m/z | −0.0082 Th | −0.0046 Th | **−0.0025 Th** |
+| Std delta m/z | 0.1180 Th | 0.0882 Th | **0.0872 Th** |
+| MAD delta m/z | 0.0800 Th | 0.0472 Th | **0.0464 Th** |
+| RMS delta m/z | 0.1188 Th | 0.0884 Th | **0.0872 Th** |
+| Median delta ppm | −9.92 | −5.87 | **−3.14** |
 
-The two corrected outputs are equivalent on every metric, with C# marginally ahead on
-all of them. The match count rises in both because correcting the m/z pulls fragments
+A paired measurement: both implementations run over the same cohort, on the same machine, with
+the same library, tolerance and minimum intensity, and both sets of outputs scored by the same
+`mars qc`.
+
+It was re-taken after the injection-time fix moved the C# column. Python's numbers are within
+0.0001 Th of the run they replaced (0.0472 against 0.0471 MAD, 0.0882 against 0.0884 std),
+which is the control worth having: it says the methodology is the same one, so the movement in
+the C# column is a real change rather than a difference in how it was measured.
+
+Both implementations select the same 20 features here - Python logs
+`Using 20 features` and drops only the two temperature features for want of logs. That is the
+agreement the port was aiming at, and for a while C# did not have it: it was training on 5,
+having switched off the injection-time and ion-population groups on data where they vary.
+
+The two corrected outputs are equivalent on every metric, with C# now modestly ahead on all of
+them rather than level - most visibly on centering, where the median residual is −0.0025 Th
+against −0.0046 Th. The match count rises in both because correcting the m/z pulls fragments
 that sat outside the tolerance back inside it.
 
 Note also that both implementations' written files score slightly WORSE than their own
-reported numbers (0.0883 versus 0.0854 std for C#). That gap is inherent to the design,
+reported numbers (0.0872 on the written files against 0.0862 reported, for C#). That gap is
+inherent to the design,
 not a porting error: the model is trained with `fragment_mz` set to the library's
 theoretical m/z and the neighbor windows anchored there, but at correction time neither
 is available and the observed m/z stands in for both. Closing it would mean changing the
@@ -921,7 +938,7 @@ the small fixtures.
 | The index is valid: seeking to every recorded offset lands on the element it names | **PASS**, all 114,638 offsets on a 1.2 GB file |
 | The SHA-1 checksum validates | **PASS** (and the Python output FAILS, see 10a.1) |
 | Null correction decodes to bit-identical m/z and intensity | **PASS**, 56,972,925 peaks |
-| Mass accuracy improves on the written file | **PASS**, MAD 0.0800 to 0.0469 Th |
+| Mass accuracy improves on the written file | **PASS**, MAD 0.0800 to 0.0464 Th |
 | DIA-NN completes a search with identifications within noise of the Python-corrected file | **outstanding** |
 | SeeMS opens the file with no warnings | **outstanding** |
 | Skyline imports it | **outstanding** |

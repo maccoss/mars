@@ -49,9 +49,17 @@ public static class CompareCommand
             return Program.ExitInputError;
         }
 
+        bool validate = args.Flag("validate");
+        int maxReport = args.Int("max-report") ?? 10;
+
+        // Every option this command reads has been read by now, so a typo can be named rather
+        // than silently ignored. RejectUnknown only knows an option is real because something
+        // asked for it.
+        args.RejectUnknown();
+
         var stopwatch = Stopwatch.StartNew();
 
-        if (args.Flag("validate"))
+        if (validate)
         {
             foreach (string path in new[] { pathA, pathB })
             {
@@ -63,7 +71,7 @@ public static class CompareCommand
         }
 
         Log.Info($"Comparing {Path.GetFileName(pathA)} against {Path.GetFileName(pathB)}...");
-        MzMLComparison comparison = MzMLComparer.Compare(pathA, pathB, args.Int("max-report") ?? 10);
+        MzMLComparison comparison = MzMLComparer.Compare(pathA, pathB, maxReport);
 
         Console.Out.WriteLine($"spectra compared      {comparison.SpectraCompared:N0}");
         Console.Out.WriteLine($"peaks compared        {comparison.MzValuesCompared:N0}");

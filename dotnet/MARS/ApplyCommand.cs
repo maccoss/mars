@@ -33,7 +33,8 @@ public static class ApplyCommand
                                              Leave wider isolation windows uncorrected
                       --on-reorder <mode>    clamp (default), revert, or allow
                       --python-compat        Reproduce the Python inconsistencies
-                      --threads <n>          Worker threads
+                      --threads <n|auto>     Worker threads (default: auto, one per
+                                             logical processor)
                       --output-format <fmt>  mzML (default), mzXML, mzMLb or mgf
                       --validate             Check the index and checksum of each output
                   -v, --verbose              Verbose output
@@ -68,11 +69,6 @@ public static class ApplyCommand
         string outputDirectory = args.String("output-dir") ?? ".";
         Directory.CreateDirectory(outputDirectory);
 
-        MzCalibrator calibrator = MarsModelIo.Load(modelPath);
-        Log.Info($"Loaded model from {modelPath}");
-        Log.Info($"  {calibrator.Features.Count} features: {string.Join(", ", calibrator.Features.Names())}");
-        Log.Info($"  acquisition time offset: {calibrator.AbsoluteTimeOffset:F1} s");
-
         var correctionOptions = new CorrectionOptions
         {
             MaxIsolationWindowWidth = args.Double("max-isolation-window"),
@@ -88,10 +84,38 @@ public static class ApplyCommand
 
         string? temperatureDirectory = args.String("temperature-dir");
         bool validate = args.Flag("validate");
-        int threads = args.Int("threads") ?? -1;
+        int threads = ThreadCount.Resolve(args, Log.Info, Log.Warn);
 
         // Resolved before any file is opened, so an unwritable format fails immediately.
         MarsOutputFormat outputFormat = CorrectedFileWriter.ResolveFormat(args);
+
+        // Every option this command reads has been read by now, so a typo can be named rather
+        // than silently ignored. RejectUnknown only knows an option is real because something
+        // asked for it.
+        args.RejectUnknown();
+
+        MzCalibrator calibrator = MarsModelIo.Load(modelPath);
+        Log.Info($"Loaded model from {modelPath}");
+        Log.Info($"  {calibrator.Features.Count} features: {string.Join(", ", calibrator.Features.Names())}");
+        Log.Info($"  acquisition time offset: {calibrator.AbsoluteTimeOffset:F1} s");
+
+        // A model trained with the RF temperature features expects them at correction time.
+        // Absent, they are substituted the way training substitutes a missing one - the
+        // boosting implementation maps a non-finite feature to 0.0 before binning - so the
+        // run still completes and still corrects. It just does it with two features pinned
+        // to a value the model saw for no real spectrum, and nothing about the output says
+        // so, which is why it is worth a line here.
+        bool modelWantsTemperature =
+            calibrator.Features.Contains(MarsFeature.Rfa2Temp) ||
+            calibrator.Features.Contains(MarsFeature.Rfc2Temp);
+
+        if (modelWantsTemperature && temperatureDirectory is null)
+        {
+            Log.Warn(
+                "This model was trained with the RF temperature features, but no " +
+                "--temperature-dir was given. They will be treated as missing for every " +
+                "spectrum. Pass the directory holding the RFA2-/RFC2- CSVs to use them.");
+        }
 
         var stopwatch = Stopwatch.StartNew();
         var failures = 0;
@@ -102,6 +126,13 @@ public static class ApplyCommand
             TemperatureSet? temperatures = temperatureDirectory is null
                 ? null
                 : TemperatureCsvReader.Find(file, temperatureDirectory, Log.Debug);
+
+            if (modelWantsTemperature && temperatureDirectory is not null && temperatures is null)
+            {
+                Log.Warn(
+                    $"No temperature CSV matched {Path.GetFileName(file)}; its RF temperature " +
+                    "features will be treated as missing.");
+            }
 
             string outputFile = CorrectedFileWriter.OutputPathFor(file, outputDirectory, outputFormat);
 

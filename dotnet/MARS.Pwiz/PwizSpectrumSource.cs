@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using MARS.IO;
 using MARS.Core;
 using Pwiz.Data.Common;
 using Pwiz.Data.Common.Cv;
@@ -265,15 +266,16 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
     }
 
     /// <summary>Run start as a Unix timestamp, for the absolute_time feature.</summary>
+    /// <remarks>
+    /// Parsed by the mzML reader's own routine rather than a second copy of the rules here. A
+    /// stamp with no UTC offset has to be read the same way in both, or the same run gives one
+    /// absolute_time through its .raw and another through the mzML msconvert made from it -
+    /// shifted by the machine's offset from UTC, and only on machines that have one.
+    /// </remarks>
     private static double? StartTimeOf(MSData msd)
     {
         string? stamp = msd.Run.StartTimeStamp;
-        if (string.IsNullOrEmpty(stamp)) return null;
-
-        return DateTimeOffset.TryParse(
-            stamp, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTimeOffset parsed)
-            ? parsed.ToUnixTimeMilliseconds() / 1000.0
-            : null;
+        return string.IsNullOrEmpty(stamp) ? null : MzMLSpectrumParser.ParseStartTimeStamp(stamp);
     }
 
     /// <summary>A Thermo .raw is a file; other vendors use a directory.</summary>

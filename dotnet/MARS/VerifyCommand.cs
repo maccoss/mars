@@ -30,7 +30,8 @@ public static class VerifyCommand
                   -o, --output <path>   Where to write the round-tripped copy
                                         (default: alongside the input, -verify.mzML)
                       --keep            Keep the round-tripped file (default: delete it)
-                      --threads N       Worker threads (default: processor count)
+                      --threads <n|auto>  Worker threads (default: auto, one per
+                                          logical processor)
                       --check-offsets N Index offsets to spot check (default: all)
                   -v, --verbose         Verbose output
                 """);
@@ -74,8 +75,13 @@ public static class VerifyCommand
             return Program.ExitInputError;
         }
 
-        int threads = args.Int("threads") ?? -1;
+        int threads = ThreadCount.Resolve(args, Log.Info, Log.Warn);
         int checkOffsets = args.Int("check-offsets") ?? 0;
+
+        // Every option this command reads has been read by now, so a typo can be named rather
+        // than silently ignored. RejectUnknown only knows an option is real because something
+        // asked for it.
+        args.RejectUnknown();
 
         var stopwatch = Stopwatch.StartNew();
         MzMLFileInfo info = MzMLFile.Inspect(inputPath);

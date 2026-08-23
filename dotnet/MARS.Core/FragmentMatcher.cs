@@ -70,7 +70,7 @@ public sealed class FragmentMatcher
     /// The features a match table must collect for this matcher's output. Temperature
     /// features are only included when a temperature trace is available.
     /// </summary>
-    public static MarsFeature[] CollectedFeatures(bool injectionTimeAvailable, bool rfa2, bool rfc2)
+    public static MarsFeature[] CollectedFeatures(InjectionTimeUse injectionTime, bool rfa2, bool rfc2)
     {
         var features = new List<MarsFeature>(MarsFeatures.Count)
         {
@@ -81,7 +81,11 @@ public sealed class FragmentMatcher
             MarsFeature.AbsoluteTime,
         };
 
-        if (injectionTimeAvailable)
+        // Everything below needs the run to record an injection time, and nothing below needs
+        // it to vary. Whether it varies is decided later, from the whole matched column rather
+        // than from a sample of the head - see MzCalibrator.SelectFeatures. Collecting a
+        // column costs one array; deciding too early costs the feature.
+        if (injectionTime != InjectionTimeUse.Absent)
         {
             features.Add(MarsFeature.InjectionTime);
             features.Add(MarsFeature.TicInjectionTime);
@@ -176,7 +180,10 @@ public sealed class FragmentMatcher
                 {
                     table.Set(MarsFeature.InjectionTime, injectionTime);
                     table.Set(MarsFeature.TicInjectionTime, ticInjectionTime);
+                }
 
+                if (table.Has(MarsFeature.FragmentIons))
+                {
                     double fragmentIons = hasInjectionTime ? observedIntensity * injectionTime : double.NaN;
                     table.Set(MarsFeature.FragmentIons, fragmentIons);
 

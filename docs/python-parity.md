@@ -14,8 +14,12 @@ Stellar cohort both find **352,349 matches**, and measured on the written files:
 
 | | before | C# | Python |
 |---|---|---|---|
-| MAD | 0.0800 Th | 0.0469 | 0.0471 |
-| std | 0.1180 Th | 0.0883 | 0.0884 |
+| MAD | 0.0800 Th | 0.0464 | 0.0472 |
+| std | 0.1180 Th | 0.0872 | 0.0882 |
+
+Both columns come from one paired run, re-taken after the injection-time fix moved the C#
+column. Python landed within 0.0001 Th of its previous run, which is what says the two
+measurements are comparable. Both implementations use the same 20 features on this cohort.
 
 That is reassuring and almost meaningless on its own. It is a summary over hundreds of
 thousands of rows, and a feature can be wrong in a way that never moves it. The two

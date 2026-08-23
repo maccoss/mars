@@ -62,7 +62,7 @@ the QC report is drawn in.
   spectrum per isolation window: the same file becomes 8 MS2 across 8 isolation windows and 4
   retention times, and that first spectrum becomes 8,377 peaks.
 
-  This is what makes Bruker data usable rather than merely tidy. MARS computes fourteen of its
+  This is what makes Bruker data usable rather than merely tidy. MARS computes twelve of its
   features from the peaks surrounding each match, and a two-peak mobility slice has no
   neighbours to measure. Reading and writing both combine, so what is written matches what was
   modelled. Data without an ion mobility stage is unaffected.
@@ -166,7 +166,7 @@ the QC report is drawn in.
   ZenoTOF 8600 file is 1,619 evenly spaced points in one MS2, at 0.00233 Th, which is 16 ppm at
   m/z 142. MARS measures mass error by taking the most intense peak in a window, so on a sampled
   curve the answer is quantised to the grid and the floor on measurable error would be several
-  times the error the instrument has; the fourteen space-charge features would be counting
+  times the error the instrument has; the twelve space-charge features would be counting
   samples of one ion rather than neighbouring ions.
 
   pwiz exposes the vendor's own algorithm, and MARS uses it - "ABI/Analyst peak picking" here,
@@ -180,6 +180,120 @@ the QC report is drawn in.
   only to the m/z values.
 
 ## Bug Fixes
+
+- **The injection-time features were being switched off on data where they vary.** This
+  changes written output, and it is the largest accuracy change in this release. Two faults
+  compounded:
+
+  MARS decided whether the ion injection time varies by sampling the **first 500 MS2 spectra**.
+  An ion trap holds its injection time at the method's ceiling until the trap actually fills,
+  which on a gradient means the entire void volume - so the head of a run is the one stretch
+  that cannot show variation, whatever the run does later. Every Stellar file tested reads as
+  constant over its first few hundred spectra and varies well before the end:
+
+  | Stellar run | distinct MS2 injection times | spectra off the ceiling | first at |
+  |---|---|---|---|
+  | HeLa GPF-DIA, 5-file reference cohort | 6,937 | 6% | spectrum 11,060 |
+  | HeLa standard 4 m/z DIA | 65,059 | 67% | spectrum 9,253 |
+  | 1 Th GPF-DIA | 2,033 | 1.8% | spectrum 8,239 |
+
+  Whether the injection time varies is now decided from the whole matched column, which
+  matching has already produced, rather than from a sample taken before it. Nothing extra is
+  read.
+
+  Second, that verdict was also switching off `fragment_ions`, the six
+  `ions_above_`/`ions_below_` windows and the six `adjacent_ratio_` features - which was wrong
+  independently of the sampling. They are peak sums over m/z windows, scaled by the injection
+  time to turn a rate into a count: they need an injection time to exist, but not to vary,
+  because a constant multiplies them all by the same factor and leaves every split available.
+  They are now kept whenever the run records an injection time at all.
+
+  On the five-file Stellar reference cohort, measured by rematching the library against the
+  written files:
+
+  | | before | after |
+  |---|---|---|
+  | Features | 5 | 20 |
+  | MAD delta m/z | 0.0581 Th | **0.0464 Th** |
+  | Std delta m/z | 0.0986 Th | **0.0872 Th** |
+  | Out-of-fold MAD | 0.0589 Th | **0.0452 Th** |
+  | Out-of-fold r | 0.5134 | **0.6791** |
+
+  The out-of-fold numbers move with the rest, so this is predictive accuracy rather than a
+  closer fit to the training rows. Almost all of the gain on this cohort comes from the
+  ion-population features - `ions_above_0_1` carries the highest permutation importance of any
+  feature in the model - because only 6% of its spectra are off the ceiling. On a run where
+  two thirds of them are, the injection time itself should matter more; that has not been
+  measured, for want of an annotated library for those files.
+
+  Astral data is unaffected: its injection time varies within the first few hundred spectra, so
+  it was already getting all 20 features. Same file before and after, the trained model is
+  byte-identical.
+
+  This restores agreement with the Python implementation rather than departing from it. Python
+  keeps these features whenever a run records an injection time, without asking whether it
+  varies, and logs `Using 20 features` on this cohort - the same 20 C# now selects. Re-running
+  both over the cohort and scoring each implementation's written files with the same `mars qc`:
+
+  | measured on the written files | uncorrected | Python | C# |
+  |---|---|---|---|
+  | MAD delta m/z | 0.0800 Th | 0.0472 Th | **0.0464 Th** |
+  | Std delta m/z | 0.1180 Th | 0.0882 Th | **0.0872 Th** |
+  | Median delta m/z | −0.0082 Th | −0.0046 Th | **−0.0025 Th** |
+
+  Python's figures land within 0.0001 Th of the run recorded in
+  [the port spec](../docs/dotnet-port-spec.md) before any of this, which is the control that
+  makes the comparison meaningful: the methodology is unchanged, so the movement is in C#.
+
+  A run that records no injection time at all still drops all of these, as it must - there is
+  nothing to turn a rate into a count with. **Models trained by an earlier build of this
+  release should be retrained**; files corrected with one are under-corrected rather than wrong.
+
+- **Cross-validation folds could be split by the wrong peptide.** A library entry that
+  collected no fragments is dropped as it is read, and every per-entry array shed it except
+  the peptide group. After the first dropped entry the groups were off by one, so fold
+  assignment used a neighbouring peptide's group - which is exactly the leak the grouped split
+  exists to prevent, and it would have reported a held-out accuracy better than the truth. No
+  reference library in the test set drops an entry, so the published numbers are unaffected;
+  a PRISM CSV whose rows all lack a product m/z for some precursor would have triggered it.
+
+- **`--threads` had no effect on the mzML write path.** The worker count was computed and then
+  discarded, leaving concurrency bounded only by the 512-deep read-ahead queue, so `--threads 1`
+  ran up to 16 spectra at once. Output was never affected - results are written in submission
+  order and the correction is per-spectrum - but a user limiting MARS to one core on a shared
+  machine did not get one core.
+
+- **`mars apply`, `verify` and `compare` accepted unknown options in silence.** Only
+  `calibrate` and `qc` ran the check, so a typo on the other three did what it was introduced
+  to prevent: the run completed having quietly used a default. `apply` now also runs the check
+  before loading the model, so a typo costs no time.
+
+- **`--cv-folds 0` reported no ppm figures.** The single-fit evaluation path was handed the
+  per-row ppm scale and ignored it, so `beforePpm` and `afterPpm` came back empty on
+  high-resolution data - the units that data is read in.
+
+- **A `.raw` and its converted mzML could disagree on acquisition time.** The pwiz adapter
+  parsed a timestamp with no UTC offset as machine-local where the mzML reader assumes UTC, so
+  the `absolute_time` feature shifted by the machine's offset. Both now use one routine.
+
+- **A named modification in a `.blib` no longer produces a confidently wrong fragment m/z.**
+  `C[Carbamidomethyl]` carries no mass, and it was dropped silently: the residue kept its
+  unmodified mass and every fragment past it came out wrong by the delta. With no Modifications
+  table to fall back on, MARS now keeps the m/z the library recorded and says how many entries
+  that applied to.
+
+- **A cohort mixing instruments is now reported.** One fragment tolerance is chosen for the
+  whole run from the first file's analyzer, so a directory holding both trap and
+  high-resolution data had one of them matched at the wrong width without saying so. The
+  injection-time probe now reads every file rather than the first.
+
+- **Applying a temperature-trained model without temperature data now warns.** The features
+  were substituted the way training substitutes a missing one and the run completed, with two
+  features pinned to a value no real spectrum produced and nothing in the output saying so.
+
+- **`mars verify` no longer allocates the whole file on a corrupt index offset.** The offset is
+  read out of the file being validated, which is exactly the file that cannot be trusted, and a
+  small one had the validator try to read the entire run as an index list.
 
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were
   reported as a warning *after* the command finished, so `--tolernace-ppm 10` silently
@@ -236,6 +350,30 @@ the QC report is drawn in.
   possible failure for it to have.
 
 ## Performance
+
+- **`--threads` now defaults to `auto` and says what it picked.** The default was already one
+  worker per logical processor, but nothing reported it and the help text did not mention it,
+  so there was no way to tell what a run had used. It is now named (`--threads auto`), reported
+  in the log, and documented.
+
+  Whether the extra hardware threads of an SMT processor earn their place is usually asserted
+  rather than measured, so it was measured - correcting and rewriting one 1.2 GB Stellar run on
+  an 8-core i9-9900K with 16 logical processors, best of two passes run in both directions:
+
+  | threads | 2 | 4 | 6 | 8 | 10 | 12 | 16 |
+  |---|---|---|---|---|---|---|---|
+  | seconds | 150.5 | 77.4 | 52.5 | 45.4 | 42.8 | 38.7 | 36.8 |
+
+  All 16 are 24% faster than the 8 physical cores, so the default keeps using them. No upper
+  ceiling is imposed: the curve is shallow past 8 and the writer's in-order drain has to become
+  the limit on a large enough machine, but where that falls has not been measured and a guessed
+  ceiling would be worse than none.
+
+  A count below 1 is now refused rather than silently meaning "all of them" - `--threads $N`
+  with `N` unset should report the mistake - and a count above the processor count is honoured
+  with a warning. Neither affects the output: thread count changes how long a run takes and
+  nothing else.
+
 
 Measured on an i9-9900K (16 threads), sequentially so the numbers are not contention:
 

@@ -175,10 +175,30 @@ public static class MzMLValidator
         return (indexListOffset, checksum, checksumTagOffset);
     }
 
+    /// <summary>
+    /// Reads the index list, which runs from the recorded offset to the end of the file.
+    /// </summary>
+    /// <remarks>
+    /// The offset is read out of the file being validated, so it cannot be trusted to be
+    /// sane - a truncated or corrupt file is exactly what this method is pointed at. An
+    /// offset near the start of the file would otherwise have this allocate the whole run:
+    /// on a 5 GB mzML that is an out-of-memory crash reported as a validator bug, when the
+    /// finding is that the file's index is broken. Beyond the cap the index is not read and
+    /// the offsets it would have carried are reported as unvalidated.
+    /// </remarks>
     private static string ReadIndexList(FileStream stream, long offset, long fileLength)
     {
+        // One offset per spectrum, ~80 bytes each, so this is room for tens of millions -
+        // orders of magnitude above any real run, and still a bounded allocation.
+        const long MaxIndexListBytes = 512L * 1024 * 1024;
+
+        if (offset >= fileLength) return string.Empty;
+
+        long available = fileLength - offset;
+        if (available > MaxIndexListBytes) return string.Empty;
+
         stream.Seek(offset, SeekOrigin.Begin);
-        int length = (int)Math.Min(fileLength - offset, int.MaxValue);
+        int length = (int)available;
         var buffer = new byte[length];
         int total = 0;
         while (total < length)

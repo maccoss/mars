@@ -16,9 +16,9 @@ roughly in half:
 
 | Stellar HeLa GPF-DIA, 5 files | Uncorrected | Corrected |
 |---|---|---|
-| Median absolute deviation | 0.0800 Th | **0.0469 Th** |
-| Standard deviation | 0.1180 Th | **0.0883 Th** |
-| Median error | -0.0082 Th | **-0.0048 Th** |
+| Median absolute deviation | 0.0800 Th | **0.0464 Th** |
+| Standard deviation | 0.1180 Th | **0.0872 Th** |
+| Median error | -0.0082 Th | **-0.0025 Th** |
 
 Measured by rematching the library against the written output. On an already
 well-calibrated Astral run the same pipeline moves the spread by under 2% - there is
@@ -323,7 +323,7 @@ failure.
 | `--min-intensity` | 500 | Minimum peak intensity usable as a training row |
 | `--max-isolation-window` | - | Leave wider isolation windows uncorrected |
 | `--temperature-dir` | - | RF temperature logs (`RFA2-*.csv`, `RFC2-*.csv`) |
-| `--threads` | all cores | Worker threads |
+| `--threads` | `auto` | Worker threads; `auto` is one per logical processor, and the run reports which it used |
 | `--on-reorder` | `clamp` | What to do if a correction would unsort the m/z array |
 
 ## Which library do I need?

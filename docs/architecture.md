@@ -102,7 +102,7 @@ the model consume `SpectrumRecord` and neither know nor care which reader produc
 
 **Ion mobility is collapsed, not modelled.** pwiz is asked to combine each TIMS frame's
 mobility scans into one spectrum per isolation window, on read and on write. Uncombined, a
-diaPASEF frame is hundreds of two-peak spectra sharing one retention time, and fourteen of
+diaPASEF frame is hundreds of two-peak spectra sharing one retention time, and twelve of
 MARS's features are computed from the peaks surrounding a match.
 
 ## The mzML path

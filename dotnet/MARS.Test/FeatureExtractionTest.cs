@@ -199,7 +199,7 @@ public sealed class PeptideMassTest
     [Fact]
     public void ModifiedSequencesSplitIntoResiduesAndDeltas()
     {
-        (string stripped, List<(int Position, double Mass)> modifications) =
+        (string stripped, List<(int Position, double Mass)> modifications, int unweighed) =
             PeptideMass.SplitModifiedSequence("LSC[+57.021464]AASGFTFSSYAM[+15.994915]SWVR");
 
         Assert.Equal("LSCAASGFTFSSYAMSWVR", stripped);
@@ -207,6 +207,29 @@ public sealed class PeptideMassTest
         Assert.Equal(3, modifications[0].Position);
         Assert.Equal(57.021464, modifications[0].Mass, 9);
         Assert.Equal(15, modifications[1].Position);
+        Assert.Equal(0, unweighed);
+    }
+
+    /// <summary>
+    /// A modification named rather than weighed has no mass here, and saying so is the whole
+    /// point: dropping it silently leaves the residue at its unmodified mass, and every
+    /// theoretical fragment past that position comes out wrong by the delta while looking
+    /// perfectly reasonable.
+    /// </summary>
+    [Theory]
+    [InlineData("LSC[Carbamidomethyl (C)]AASGFTFSSYAMSWVR", 1)]
+    [InlineData("LSCAASGFTFSSYAM(unimod:35)SWVR", 1)]
+    [InlineData("LSC[Carbamidomethyl (C)]AASGFTFSSYAM[+15.994915]SWVR", 1)]
+    public void ANamedModificationIsCountedRatherThanDropped(string sequence, int expected)
+    {
+        (string stripped, List<(int Position, double Mass)> modifications, int unweighed) =
+            PeptideMass.SplitModifiedSequence(sequence);
+
+        Assert.Equal("LSCAASGFTFSSYAMSWVR", stripped);
+        Assert.Equal(expected, unweighed);
+
+        // The named one contributes no delta; a numeric one alongside it still does.
+        Assert.DoesNotContain(modifications, m => m.Position == 3);
     }
 
     [Fact]

@@ -110,13 +110,22 @@ public static class PeptideMass
 
     /// <summary>
     /// Splits a modified sequence into its bare residues and the mass delta at each
-    /// 1-based position. Handles the bracket and parenthesis conventions BiblioSpec and
-    /// DIA-NN emit: M[+15.9949], C[Carbamidomethyl (C)] and M(unimod:35).
+    /// 1-based position, and reports how many modifications it could not weigh.
     /// </summary>
-    public static (string Stripped, List<(int Position, double Mass)> Modifications) SplitModifiedSequence(string sequence)
+    /// <remarks>
+    /// Only a numeric body carries its own mass: <c>M[+15.9949]</c> is a delta this can use,
+    /// where <c>C[Carbamidomethyl (C)]</c> and <c>M(unimod:35)</c> are names that need a
+    /// table this does not have. Those are counted rather than ignored. A dropped
+    /// modification does not produce a missing answer, it produces a confident wrong one -
+    /// the residue keeps its unmodified mass and every fragment past it is off by the delta -
+    /// so a caller computing theoretical m/z has to know the difference.
+    /// </remarks>
+    public static (string Stripped, List<(int Position, double Mass)> Modifications, int Unweighed)
+        SplitModifiedSequence(string sequence)
     {
         var stripped = new StringBuilder(sequence.Length);
         var modifications = new List<(int, double)>();
+        var unweighed = 0;
 
         for (var i = 0; i < sequence.Length; i++)
         {
@@ -129,10 +138,13 @@ public static class PeptideMass
                 if (end < 0) break;
 
                 string body = sequence[(i + 1)..end];
-                if (double.TryParse(body, NumberStyles.Float, CultureInfo.InvariantCulture, out double delta) &&
-                    stripped.Length > 0)
+                if (double.TryParse(body, NumberStyles.Float, CultureInfo.InvariantCulture, out double delta))
                 {
-                    modifications.Add((stripped.Length, delta));
+                    if (stripped.Length > 0) modifications.Add((stripped.Length, delta));
+                }
+                else
+                {
+                    unweighed++;
                 }
 
                 i = end;
@@ -142,7 +154,7 @@ public static class PeptideMass
             if (char.IsLetter(c)) stripped.Append(char.ToUpperInvariant(c));
         }
 
-        return (stripped.ToString(), modifications);
+        return (stripped.ToString(), modifications, unweighed);
     }
 
     private static double[] BuildResidueTable()

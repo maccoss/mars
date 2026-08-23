@@ -260,7 +260,7 @@ windows and 4 retention times, and that first spectrum into **8,377 peaks**.
 That is not only tidier, it is the difference between usable and not. MARS matches library
 fragments within a spectrum and computes its space-charge features from the peaks around each
 match - `ions_above_0_1`, `adjacent_ratio_1_2` and the rest. On a two-peak mobility slice there
-are no neighbours to measure, so those fourteen features would be noise even where they were
+are no neighbours to measure, so those twelve features would be noise even where they were
 defined. Combined, the spectrum has the shape every other instrument already produces, and the
 matcher and the features work unchanged.
 
@@ -444,7 +444,7 @@ The ZenoTOF 8600 file is stored as profile: `profile=True`, 1,619 points in one 
 spaced at 0.00233 Th. That spacing is 16 ppm at m/z 142, which matters because MARS measures
 mass error by taking the most intense peak inside a tolerance window - on a sampled curve the
 answer is quantised to the grid, so the floor on measurable error would be several times the
-error the instrument actually has. The fourteen space-charge features fare worse still: they
+error the instrument actually has. The twelve space-charge features fare worse still: they
 count the peaks around a match, and on profile they would count samples of the same ion.
 
 pwiz exposes the vendor's own algorithm through `IVendorCentroidingSpectrumList`, which

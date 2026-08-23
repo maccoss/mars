@@ -152,6 +152,71 @@ public class PwizSpectrumListTest
         Assert.Equal(0, inner.BinaryReads);
     }
 
+    /// <summary>
+    /// Nothing in <c>SpectrumList</c> promises a spectrum is asked for once. A consumer that
+    /// looks at one twice has to get it twice.
+    /// </summary>
+    [Fact]
+    public void ASpectrumCanBeReadTwice()
+    {
+        var inner = new FakeSpectrumList(count: 60);
+        using var list = Wrap(inner, threads: 8);
+
+        Spectrum first = list.GetSpectrum(5, getBinaryData: true);
+        Spectrum again = list.GetSpectrum(5, getBinaryData: true);
+
+        Assert.Equal("scan=5", first.Id);
+        Assert.Equal("scan=5", again.Id);
+
+        // And corrected identically both times - the second read must not skip the model.
+        Assert.Equal(first.GetMZArray()!.Data[0], again.GetMZArray()!.Data[0], 15);
+    }
+
+    /// <summary>
+    /// A spectrum served outside the batch must add to the file's counters, not replace them.
+    /// </summary>
+    [Fact]
+    public void CountersSurviveASpectrumServedOutsideTheBatch()
+    {
+        var inner = new FakeSpectrumList(count: 101);
+        using var list = Wrap(inner, threads: 8);
+
+        for (int i = 0; i < inner.Count; i++) list.GetSpectrum(i, getBinaryData: true);
+        long seen = list.SpectraSeen;
+        Assert.True(seen > 1);
+
+        // 101 spectra with every fourth an MS1, and only MS2 is counted.
+        Assert.Equal(75, seen);
+
+        // A re-read is served outside the batch, and adds exactly one to the totals rather
+        // than replacing them. Index 99 is an MS2; an MS1 would correctly add nothing.
+        list.GetSpectrum(99, getBinaryData: true);
+        Assert.Equal(seen + 1, list.SpectraSeen);
+    }
+
+    /// <summary>
+    /// A caller that jumps once and then walks in order should get the read-ahead back rather
+    /// than falling back to one spectrum at a time for the rest of the file.
+    /// </summary>
+    [Fact]
+    public void AJumpStartsANewBatchRatherThanDisablingBatching()
+    {
+        var inner = new FakeSpectrumList(count: 200);
+        using var list = Wrap(inner, threads: 8);
+
+        list.GetSpectrum(0, getBinaryData: true);
+        list.GetSpectrum(120, getBinaryData: true);
+
+        int afterJump = inner.BinaryReads;
+
+        // The batch primed at 120 covers what follows, so walking on reads nothing more.
+        list.GetSpectrum(121, getBinaryData: true);
+        list.GetSpectrum(122, getBinaryData: true);
+
+        Assert.Equal(afterJump, inner.BinaryReads);
+        Assert.Equal("scan=122", list.GetSpectrum(122, getBinaryData: true).Id);
+    }
+
     private static double[] CorrectedMz(int threads)
     {
         var inner = new FakeSpectrumList(count: 101);

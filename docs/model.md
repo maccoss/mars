@@ -221,8 +221,12 @@ than treating the default as settled.
 
 Not a fixed list. The feature set is chosen from what the data actually supports:
 
-- If no MS2 spectrum carries an ion injection time, the whole injection-time group is
+- If no MS2 spectrum carries an ion injection time, all fifteen features that count ions are
   dropped rather than filled with zeros.
+- If it is carried but never changes across the matched rows, only `injection_time` and
+  `tic_injection_time` go. The thirteen features it merely scales are kept - see
+  [the algorithm](algorithm.md#features-are-selected-not-assumed) for why, and for why that
+  question is settled over the whole column rather than a sample of it.
 - Temperature features appear only when the matching CSVs were supplied.
 - A row with any undefined feature value is dropped, not imputed.
 
@@ -451,7 +455,7 @@ implementation's pickled XGBoost booster; retrain rather than convert.
 
 ```jsonc
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "marsVersion": "26.1.0",
   "featureNames": ["precursor_mz", "fragment_mz", ...],  // ordered; must match at load
   "absoluteTimeOffset": 1733158420.0,                    // seconds, see below
@@ -459,9 +463,14 @@ implementation's pickled XGBoost booster; retrain rather than convert.
   "model":    { "baseScore": ..., "objective": "SquaredError", "featureCount": 20,
                 "feature": [...], "threshold": [...], "left": [...], "right": [...],
                 "leaf": [...], "treeRoot": [...] },
-  "training": { "rowsMatched": ..., "rowsTrain": ..., "trainMae": ..., ... }
+  "training": { "rowsMatched": ..., "rowsTrain": ..., "trainMae": ..., ... },
+  "crossValidation": { "folds": 5, "groups": ..., "outOfFoldMad": ..., "foldMad": [...], ... }
 }
 ```
+
+`formatVersion` has to match exactly; a model written by a different format version is
+refused rather than read on a best guess. Version 2 added the `crossValidation` section,
+which carries the out-of-fold numbers the report is drawn from.
 
 The trees are stored as flat parallel arrays rather than nested objects: one entry per
 node, with `treeRoot` indexing where each tree starts. A hundred trees of depth six is

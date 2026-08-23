@@ -113,17 +113,21 @@ internal sealed class MarsSpectrumList : SpectrumListBase
         // priming a batch of full spectra to answer one would be pure waste.
         if (_corrector is null || !getBinaryData || _threads <= 1) return Sequential(index, getBinaryData);
 
-        if (index >= _batchStart && index < _batchStart + _batchCount)
-            return Take(index);
+        int slot = index - _batchStart;
+        bool inBatch = _batchStart >= 0 && slot >= 0 && slot < _batchCount;
 
-        // A pull that is not the start of the next batch means the caller is not walking the
-        // list in order. Serve it directly rather than reading ahead from the wrong place.
-        if (index != _batchStart + _batchCount || _batchStart < 0)
-        {
-            if (_batchStart >= 0 && index != _batchStart + _batchCount) Reset();
-            if (_batchStart >= 0) return Sequential(index, getBinaryData);
-        }
+        // Corrected, still held, not yet handed over.
+        if (inBatch && _batch[slot] is not null) return Take(index);
 
+        // In the batch but already handed over: the caller is re-reading a spectrum. Nothing
+        // here promises single use - a consumer may look at a spectrum twice - so read it
+        // again rather than refilling the batch around it or, worse, failing.
+        if (inBatch) return Sequential(index, getBinaryData);
+
+        // Outside the batch: start a new one here. That covers both the ordinary sequential
+        // walk and a jump - a caller that skips ahead once and then walks in order, which is
+        // what a writer filtering on MS level looks like, gets the read-ahead back rather
+        // than losing it for the rest of the file.
         FillBatch(index);
         return _batchCount > 0 && index >= _batchStart && index < _batchStart + _batchCount
             ? Take(index)
@@ -157,19 +161,15 @@ internal sealed class MarsSpectrumList : SpectrumListBase
     {
         int slot = index - _batchStart;
         Spectrum spectrum = _batch[slot]
-                            ?? throw new InvalidOperationException($"Spectrum {index} was taken twice.");
+                            ?? throw new InvalidOperationException(
+                                $"Spectrum {index} is no longer held by the batch. GetSpectrum " +
+                                "checks the slot before calling this, so reaching here means the " +
+                                "batch bookkeeping is wrong.");
 
         // Dropped as soon as it is handed over: the writer encodes it and moves on, and
         // holding the whole batch alive until the next refill would double the footprint.
         _batch[slot] = null;
         return spectrum;
-    }
-
-    private void Reset()
-    {
-        Array.Clear(_batch);
-        _batchStart = -1;
-        _batchCount = 0;
     }
 
     /// <summary>
@@ -232,12 +232,32 @@ internal sealed class MarsSpectrumList : SpectrumListBase
         if (_corrector is null || !getBinaryData) return spectrum;
 
         Correct(spectrum, _serial);
-        SpectraSeen = _serial.Seen;
-        SpectraCorrected = _serial.Corrected;
-        MonotonicityFixes = _serial.MonotonicityFixes;
-        SpectraReverted = _serial.Reverted;
-        Interlocked.Exchange(ref _correctorTicks, _serial.Ticks);
+        Drain(_serial);
         return spectrum;
+    }
+
+    /// <summary>
+    /// Folds a worker's counters into the totals and zeroes it.
+    /// </summary>
+    /// <remarks>
+    /// Both paths have to accumulate. This one assigned the running totals instead, which was
+    /// harmless only while the batched and unbatched paths never ran on the same list - so a
+    /// single spectrum served outside the batch, which a re-read now is, would have reset the
+    /// file's counts to one.
+    /// </remarks>
+    private void Drain(Worker worker)
+    {
+        SpectraSeen += worker.Seen;
+        SpectraCorrected += worker.Corrected;
+        MonotonicityFixes += worker.MonotonicityFixes;
+        SpectraReverted += worker.Reverted;
+        Interlocked.Add(ref _correctorTicks, worker.Ticks);
+
+        worker.Seen = 0;
+        worker.Corrected = 0;
+        worker.MonotonicityFixes = 0;
+        worker.Reverted = 0;
+        worker.Ticks = 0;
     }
 
     /// <summary>

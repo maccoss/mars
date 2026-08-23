@@ -73,6 +73,20 @@ WARNING: could not tell the mass analyzer from the file; assuming unit resolutio
 Astral data.
 ```
 
+One tolerance is chosen for the whole cohort, from the first file. If another file in the run
+was recorded on a different kind of analyzer, MARS says so - a directory holding both trap and
+high-resolution data gets one of them matched at the wrong width otherwise:
+
+```
+WARNING: astral.mzML was recorded on a high-resolution analyzer, but the fragment tolerance is
+being set from a unit-resolution one. One tolerance is used for the whole cohort; calibrate the
+instruments separately, or set --resolution to choose deliberately.
+```
+
+It is a warning rather than a refusal, because a mixed cohort can be deliberate and
+`--resolution` is there to settle it. A file that does not name its analyzer is not treated as
+a disagreement: it says nothing, and it already falls back to the default.
+
 Getting this wrong is quiet rather than loud, which is why it is detected. See
 [choosing a tolerance](spectral-libraries.md#choosing-a-tolerance) for what a mismatched
 window actually does to the numbers.
@@ -152,16 +166,30 @@ can never split on - while `tic_injection_time` is TIC times that constant, whic
 rescaled. Two features carrying nothing, one of them a duplicate that splits permutation
 importance with the feature it duplicates.
 
-MARS samples the head of the run and turns the pair off unless the value moves. Both are
-reported:
+**That is decided from the whole run, not a sample of it.** A trap sits at the method's ceiling
+until the trap actually fills, so the start of a gradient is flat no matter what follows -
+every Stellar run tested is constant over its first several thousand MS2 and varies later, one
+of them across two thirds of its spectra. MARS therefore collects the column during matching
+and decides afterwards, when it has all of it. Nothing extra is read to do this.
+
+**The ion-population features are a different question.** `fragment_ions`, the six
+`ions_above_`/`ions_below_` windows and the six `adjacent_ratio_` features are peak sums over
+m/z windows, multiplied by the injection time to turn a rate into a count. They need an
+injection time to exist, but not to vary: a constant multiplies every one of them by the same
+factor, which leaves them all varying and every split still available. So they are kept
+whenever the run records an injection time at all, and dropped only when it records none.
+
+Both cases are reported:
 
 ```
-WARN   No ion injection time in this run; the injection-time feature group is off.
-INFO     ion injection time is the same on every spectrum ...; the injection-time feature group is off.
+WARN   No ion injection time in this run; the ion-population features are off.
+INFO     ion injection time is the same on every matched spectrum; injection_time and
+         tic_injection_time are off. The ion-population features stay.
 ```
 
 On the Bruker and Sciex files tested here the cvParam is absent altogether rather than
-constant, so the first message applies; the second covers a run that records a fixed value.
+constant, so the first message applies; the second covers an instrument that genuinely
+accumulates for a fixed period.
 
 ---|---|---|
 | `.mzML` | - | Always |
@@ -205,6 +233,43 @@ produces a 64-bit zlib output. Left to its own defaults pwiz writes 64-bit **unc
 which inflated a Stellar run by 61%.
 
 `mgf` and `mzXML` print a warning at startup saying what they drop.
+
+### Threads
+
+`--threads` defaults to `auto`, which is one worker per logical processor. The run says which
+it chose:
+
+```
+INFO  Using 16 worker threads, one per logical processor. --threads <n> to change it.
+```
+
+One number drives all three parallel stages - the mzML writer, the pwiz spectrum list, and the
+histogram build inside the boosting implementation. Matching is not one of them: it streams
+spectra in order on a single thread, so a full `calibrate` never speeds up in proportion to
+this. Nothing about the correction depends on the count; it is a CPU-use knob, not an accuracy
+one, and the output is identical at any setting.
+
+Whether the hardware threads of a simultaneously-multithreaded CPU are worth using is usually
+argued rather than measured, so it was measured. Correcting and rewriting one 1.2 GB Stellar
+run on an 8-core i9-9900K with 16 logical processors, best of two passes taken in both
+directions to spread thermal drift:
+
+| threads | 2 | 4 | 6 | 8 | 10 | 12 | 16 |
+|---|---|---|---|---|---|---|---|
+| seconds | 150.5 | 77.4 | 52.5 | 45.4 | 42.8 | 38.7 | 36.8 |
+
+Scaling is near-perfect to 4 and still improving at the end: **the 16 logical processors are
+24% faster than the 8 physical ones**, so the default uses all of them and capping at physical
+cores would give up most of a quarter of the throughput.
+
+It is a shallow curve past 8, though - about half the ideal speedup by 16 - and the writer
+emits its finished spectra in order on one thread, which has to become the limit somewhere.
+Where that falls on a 64- or 128-core machine has not been measured, so MARS imposes no
+ceiling: a guessed one would be worse than none. It reports what it chose instead.
+
+`--threads` above the processor count is allowed and warned about; below 1 is refused, because
+`--threads $N` with `N` unset should report a scripting mistake rather than quietly take the
+whole machine.
 
 ### Speed
 
@@ -380,7 +445,7 @@ The report gives both numbers, labelled. See
 | `--no-recalibrate` | Train and report only; write no mzML |
 | `--on-reorder <mode>` | `clamp` (default), `revert`, or `allow` |
 | `--python-compat` | Reproduce two known Python inconsistencies, for A/B comparison |
-| `--threads <n>` | Worker threads |
+| `--threads <n\|auto>` | Worker threads (default: auto, one per logical processor) |
 | `-v, --verbose` | Verbose output |
 
 `--on-reorder` decides what happens when a per-peak correction would put an m/z array out
@@ -411,13 +476,25 @@ mars apply --model corrected/mars_model.json --mzml-dir more-runs/ --output-dir 
 | `--max-isolation-window <Th>` | Leave wider isolation windows uncorrected |
 | `--on-reorder <mode>` | `clamp` (default), `revert`, or `allow` |
 | `--python-compat` | Reproduce the Python inconsistencies |
-| `--threads <n>` | Worker threads |
+| `--threads <n\|auto>` | Worker threads (default: auto, one per logical processor) |
 | `--validate` | Check the index and checksum of each output |
 
 Use this for files acquired under the same conditions as the training set. A model carries
 an `absolute_time` offset, and the feature list it was trained on; loading a model whose
 features do not match what the extractor produces is a hard error rather than a silent
 mismatch.
+
+A model trained with the RF temperature features, applied without `--temperature-dir`, says
+so. The run still completes - the missing features are substituted the way training substitutes
+a missing one - but two of them are then pinned to a value no real spectrum produced, and
+nothing in the output would tell you:
+
+```
+WARNING: This model was trained with the RF temperature features, but no --temperature-dir was
+given. They will be treated as missing for every spectrum.
+```
+
+The same is said per file when a directory was given but no CSV matches that run.
 
 The judgement call is whether "the same conditions" still holds. The instrument's
 calibration drifts, which is the entire premise of the tool, so a model from three months
@@ -439,7 +516,7 @@ mars verify runs/one.mzML
 |---|---|
 | `-o, --output <path>` | Where to write the round-tripped copy (default `-verify.mzML` alongside the input) |
 | `--keep` | Keep the round-tripped file (default: delete it) |
-| `--threads <n>` | Worker threads |
+| `--threads <n\|auto>` | Worker threads (default: auto, one per logical processor) |
 | `--check-offsets <n>` | Index offsets to spot check (default: all) |
 | `-v, --verbose` | Verbose output |
 

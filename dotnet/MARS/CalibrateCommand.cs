@@ -46,6 +46,10 @@ public static class CalibrateCommand
             ?? Path.Combine(outputDirectory, "mars_qc_report.html");
         bool keepDetail = dumpMatchesPath is not null || dumpPredictionsPath is not null || !noHtmlReport;
 
+        // Resolved once and used for both the training histograms and the write, so the run
+        // reports a single number rather than settling on one per stage.
+        int threads = ThreadCount.Resolve(args, Log.Info, Log.Warn);
+
         var matchOptions = new MatchOptions
         {
             MzToleranceTh = args.Double("tolerance") ?? ResolutionMode.DefaultToleranceTh,
@@ -65,7 +69,7 @@ public static class CalibrateCommand
             Robust = ParseRobust(args.String("robust")),
             RobustSigma = args.Double("robust-sigma") ?? 3.0,
             MaxTrainingRows = args.Int("max-training-rows") ?? 0,
-            MaxDegreeOfParallelism = args.Int("threads") ?? -1,
+            MaxDegreeOfParallelism = threads,
         };
 
         var correctionOptions = new CorrectionOptions
@@ -131,17 +135,46 @@ public static class CalibrateCommand
             }
         }
 
-        bool injectionTimeAvailable =
-            UseInjectionTime(ProbeInjectionTime(sourceByFile[mzmlFiles[0]]));
+        // Probed on every file, not just the first. One run in a cohort can record a varying
+        // injection time where another does not, and the feature group is worth having if any
+        // of them carries the information - a run without it contributes a constant column
+        // for its own rows, which costs nothing.
+        InjectionTimeUse injectionTimeUse = InjectionTimeUse.Absent;
+        foreach (string file in mzmlFiles)
+        {
+            InjectionTimeUse use = ProbeInjectionTime(sourceByFile[file]);
 
-        // Decided once the readers are open, from what the first of them says its MS2
-        // analyzer is. The readers know their own formats; asking the file again from here
-        // would mean parsing a .raw as if it were mzML, which is how this used to fall back
-        // to a trap tolerance on Astral data without anyone noticing.
-        ResolutionMode resolution = ResolutionMode.Resolve(
-            args, sourceByFile[mzmlFiles[0]].Analyzer, matchOptions, Log.Info);
+            // One run recording a varying time settles it; there is nothing a later file can
+            // say that would turn the feature group back off.
+            if (use == InjectionTimeUse.Varying)
+            {
+                injectionTimeUse = use;
+                break;
+            }
 
-        MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeAvailable, anyRfa2, anyRfc2);
+            if (injectionTimeUse == InjectionTimeUse.Absent) injectionTimeUse = use;
+        }
+
+        ReportInjectionTime(injectionTimeUse);
+
+        // Decided once the readers are open, from what they say their MS2 analyzer is. The
+        // readers know their own formats; asking the file again from here would mean parsing
+        // a .raw as if it were mzML, which is how this used to fall back to a trap tolerance
+        // on Astral data without anyone noticing.
+        MassAnalyzerClass analyzer = sourceByFile[mzmlFiles[0]].Analyzer;
+
+        if (FirstAnalyzerDisagreement(mzmlFiles, f => sourceByFile[f].Analyzer, analyzer) is string odd)
+        {
+            Log.Warn(
+                $"{Path.GetFileName(odd)} was recorded on a {Describe(sourceByFile[odd].Analyzer)} " +
+                $"analyzer, but the fragment tolerance is being set from a {Describe(analyzer)} one. " +
+                "One tolerance is used for the whole cohort; calibrate the instruments separately, " +
+                "or set --resolution to choose deliberately.");
+        }
+
+        ResolutionMode resolution = ResolutionMode.Resolve(args, analyzer, matchOptions, Log.Info);
+
+        MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeUse, anyRfa2, anyRfc2);
         var table = new MatchTable(collect, keepDetail: keepDetail);
         var matcher = new FragmentMatcher(library, matchOptions);
 
@@ -255,7 +288,7 @@ public static class CalibrateCommand
                     calibrator,
                     correctionOptions,
                     temperatures,
-                    args.Int("threads") ?? -1);
+                    threads);
             }
         }
 
@@ -300,10 +333,50 @@ public static class CalibrateCommand
     /// splits permutation importance with the feature it duplicates.
     /// </para>
     /// <para>
-    /// Sampled over the head of the run rather than the first spectrum alone: one value cannot
-    /// show variation, and on a trap the first few differ immediately.
+    /// Sampled over the head of the run, which is enough to answer whether the run records an
+    /// injection time at all - a format that carries none carries none anywhere. It is not
+    /// enough to answer whether the value varies, and is no longer used for that: see
+    /// <see cref="ReportInjectionTime"/>.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The first file in a cohort not recorded on the same kind of analyzer as the rest, or
+    /// null when they agree.
+    /// </summary>
+    /// <remarks>
+    /// One tolerance is chosen for the whole cohort, so a folder holding both trap and
+    /// high-resolution runs gets one of them matched at the wrong width. That is the quiet
+    /// failure: matching Astral data at a trap tolerance opens a window hundreds of ppm wide,
+    /// fills it with wrong assignments, and reports a full model trained on them. It warrants
+    /// a warning rather than a refusal, because --resolution can be set deliberately and a
+    /// mixed cohort is the user's call to make.
+    ///
+    /// A file whose analyzer could not be read is not a disagreement. It says nothing, and
+    /// nothing is not a contradiction - it already falls back to the default tolerance.
+    /// </remarks>
+    internal static string? FirstAnalyzerDisagreement(
+        IReadOnlyList<string> files,
+        Func<string, MassAnalyzerClass> analyzerOf,
+        MassAnalyzerClass chosen)
+    {
+        if (chosen == MassAnalyzerClass.Unknown) return null;
+
+        foreach (string file in files)
+        {
+            MassAnalyzerClass other = analyzerOf(file);
+            if (other != chosen && other != MassAnalyzerClass.Unknown) return file;
+        }
+
+        return null;
+    }
+
+    private static string Describe(MassAnalyzerClass analyzer) => analyzer switch
+    {
+        MassAnalyzerClass.HighResolution => "high-resolution",
+        MassAnalyzerClass.UnitResolution => "unit-resolution",
+        _ => "unrecognized",
+    };
+
     internal static InjectionTimeUse ProbeInjectionTime(ISpectrumSource source)
     {
         const int sample = 500;
@@ -337,25 +410,28 @@ public static class CalibrateCommand
             : InjectionTimeUse.Constant;
     }
 
-    /// <summary>Reports what the probe found, and what MARS did about it.</summary>
-    internal static bool UseInjectionTime(InjectionTimeUse use)
+    /// <summary>
+    /// Reports what the probe found. Only the absent case is acted on here.
+    /// </summary>
+    /// <remarks>
+    /// Whether the injection time <em>varies</em> is not decided from this. The probe reads the
+    /// head of the run, and an ion trap holds its injection time at the method's ceiling until
+    /// the trap fills - which on a gradient is the whole void volume, tens of thousands of
+    /// spectra. Every Stellar run tested reads as constant over its first few hundred MS2 and
+    /// varies later, one of them across two thirds of its spectra. That call belongs where the
+    /// whole column is available, which is
+    /// <see cref="MzCalibrator"/>'s feature selection, and it is made there.
+    /// </remarks>
+    internal static InjectionTimeUse ReportInjectionTime(InjectionTimeUse use)
     {
-        switch (use)
+        if (use == InjectionTimeUse.Absent)
         {
-            case InjectionTimeUse.Absent:
-                Log.Warn("No ion injection time in this run; the injection-time feature group is off.");
-                return false;
-
-            case InjectionTimeUse.Constant:
-                Log.Info("  ion injection time is the same on every spectrum, as it is on an "
-                         + "instrument that accumulates for a fixed period; the injection-time "
-                         + "feature group is off. A constant cannot be split on, and TIC times a "
-                         + "constant is what log_tic already carries.");
-                return false;
-
-            default:
-                return true;
+            Log.Warn("No ion injection time in this run; the ion-population features are off. "
+                     + "They count the ions in a window, and without an injection time there "
+                     + "is nothing to turn a rate into a count with.");
         }
+
+        return use;
     }
 
     private static RobustFit ParseRobust(string? value) => value?.ToLowerInvariant() switch
@@ -498,7 +574,8 @@ public static class CalibrateCommand
                                          correction would break ascending m/z order
                   --python-compat        Reproduce two known inconsistencies in the Python
                                          implementation, for A/B comparison
-                  --threads <n>          Worker threads
+                  --threads <n|auto>     Worker threads (default: auto, one per
+                                         logical processor)
               -v, --verbose              Verbose output
             """);
     }

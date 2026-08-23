@@ -50,7 +50,8 @@ public sealed class MzMLWriteOptions
 {
     /// <summary>
     /// Workers used for the per-spectrum decode, predict and re-encode. Inference carries
-    /// no cross-row accumulation, so parallelizing it cannot change any result.
+    /// no cross-row accumulation, so parallelizing it cannot change any result - this bounds
+    /// CPU use, not output. -1 means one per processor.
     /// </summary>
     public int MaxDegreeOfParallelism { get; set; } = -1;
 
@@ -98,7 +99,14 @@ public static class MzMLWriter
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         var statePool = new ConcurrentBag<WorkerState>();
-        var scheduler = new ParallelOptions { MaxDegreeOfParallelism = workers };
+
+        // Caps how many spectra are decoded and scored at once. Without it the work goes
+        // straight to the thread pool and MaxDegreeOfParallelism - so --threads - decides
+        // nothing on this path: concurrency would be bounded only by MaxPendingSpectra, two
+        // orders of magnitude above what the caller asked for. The output is unaffected either
+        // way, since results are drained in submission order, but a user limiting MARS to one
+        // core on a shared machine has to actually get one core.
+        var scheduler = new ConcurrentExclusiveSchedulerPair(TaskScheduler.Default, workers);
 
         using FileStream input = new(info.Path, FileMode.Open, FileAccess.Read, FileShare.Read,
             1 << 20, FileOptions.SequentialScan);
@@ -155,7 +163,7 @@ public static class MzMLWriter
 
                 Task<SpectrumOutcome> work = Task.Factory.StartNew(
                     () => ProcessSpectrum(copy, spanLength, info, workerFactory, statePool),
-                    default, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+                    default, TaskCreationOptions.DenyChildAttach, scheduler.ConcurrentScheduler);
 
                 pending.Enqueue(new PendingItem { Work = work, Bytes = copy, Length = spanLength, Kind = kind });
 

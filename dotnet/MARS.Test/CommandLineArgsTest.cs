@@ -92,11 +92,14 @@ public class CommandLineArgsTest
             string mzml = Path.Combine(directory, "input.mzML");
             SyntheticMzML.Write(mzml, spectrumCount: 4, chromatogramCount: 0);
 
-            // verify takes a file as --input; the rest take --mzml. Passing both would hand
-            // each command an option it rightly does not know.
-            var argv = command == "verify"
-                ? new List<string> { command, "--input", mzml }
-                : new List<string> { command, "--mzml", mzml };
+            // Each command names its input differently, and passing the wrong one would hand
+            // it an option it rightly does not know.
+            var argv = command switch
+            {
+                "verify" => new List<string> { command, "--input", mzml },
+                "compare" => new List<string> { command, mzml, mzml },
+                _ => new List<string> { command, "--mzml", mzml },
+            };
             argv.AddRange(options);
 
             Exception? thrown = Record.Exception(() => Run(command, argv.ToArray()));
@@ -104,6 +107,59 @@ public class CommandLineArgsTest
             Assert.False(
                 thrown is UnknownOptionException,
                 $"mars {command} rejected one of its own documented options: {thrown?.Message}");
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>
+    /// A command that never runs the check accepts a typo in silence, which is worse than
+    /// rejecting a good option: the run completes, having quietly used a default for whatever
+    /// the user meant to set, and writes files that look fine.
+    /// </summary>
+    /// <remarks>
+    /// This was true of apply, verify and compare - only calibrate and qc ran the check - so
+    /// the sibling test above was passing vacuously for them.
+    /// </remarks>
+    [Theory]
+    [InlineData("qc")]
+    [InlineData("calibrate")]
+    [InlineData("apply")]
+    [InlineData("verify")]
+    [InlineData("compare")]
+    public void EveryCommandRejectsATypo(string command)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "mars-typo-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string mzml = Path.Combine(directory, "input.mzML");
+            SyntheticMzML.Write(mzml, spectrumCount: 4, chromatogramCount: 0);
+
+            var argv = command switch
+            {
+                "verify" => new List<string> { command, "--input", mzml },
+                "compare" => new List<string> { command, mzml, mzml },
+                _ => new List<string> { command, "--mzml", mzml },
+            };
+
+            // apply needs a model before it reads anything else, so give it one that exists.
+            if (command == "apply")
+            {
+                string model = Path.Combine(directory, "model.json");
+                File.WriteAllText(model, "{}");
+                argv.AddRange(new[] { "--model", model });
+            }
+
+            argv.AddRange(new[] { "--not-a-real-option", "7" });
+
+            Exception? thrown = Record.Exception(() => Run(command, argv.ToArray()));
+
+            Assert.True(
+                thrown is UnknownOptionException,
+                $"mars {command} accepted --not-a-real-option; it threw {thrown?.GetType().Name ?? "nothing"}");
         }
         finally
         {
@@ -167,7 +223,7 @@ public class CommandLineArgsTest
     public static TheoryData<string, string[]> DocumentedOptions()
     {
         var data = new TheoryData<string, string[]>();
-        foreach (string command in new[] { "qc", "calibrate", "apply", "verify" })
+        foreach (string command in new[] { "qc", "calibrate", "apply", "verify", "compare" })
             data.Add(command, OptionsFromHelp(command));
         return data;
     }

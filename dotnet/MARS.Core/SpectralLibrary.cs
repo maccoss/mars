@@ -159,7 +159,16 @@ public sealed class SpectralLibraryBuilder
         return true;
     }
 
-    /// <summary>Drops the open entry if it collected no fragments. Mirrors the Python loaders.</summary>
+    /// <summary>
+    /// Drops the open entry if it collected no fragments. Mirrors the Python loaders.
+    /// </summary>
+    /// <remarks>
+    /// Every per-entry array has to shed the entry, or they index different entries from each
+    /// other for the rest of the load. The peptide group is the one that fails quietly: it is
+    /// what keeps a peptide's fragments inside one cross-validation fold, so a misaligned group
+    /// array reintroduces the leak the grouped split exists to prevent, and the only symptom is
+    /// a held-out accuracy that is better than the truth.
+    /// </remarks>
     public void EndEntry()
     {
         int last = _precursorMz.Count - 1;
@@ -167,6 +176,7 @@ public sealed class SpectralLibraryBuilder
         if (_fragmentStart[last] != _fragmentMz.Count) return;
 
         _fragmentStart.RemoveAt(last);
+        _peptideGroup.RemoveAt(last);
         _precursorMz.RemoveAt(last);
         _precursorCharge.RemoveAt(last);
         _rtStart.RemoveAt(last);

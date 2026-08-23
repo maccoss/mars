@@ -146,11 +146,28 @@ scan range simply finds nothing and sums to zero - there is no missing-value mar
 
 ### Features are selected, not assumed
 
-Not every run supports every feature. A file with no `MS:1000927 ion injection time`
-cvParam loses fourteen of the twenty-two at once, because none of the injection-time or
-space-charge features are defined without it. The fitted model records the names it
-actually used, and loading a model whose feature list does not match the extractor is a
-hard error rather than a warning.
+Not every run supports every feature, and two different things can be missing.
+
+**No injection time at all.** A file with no `MS:1000927 ion injection time` cvParam loses
+fifteen of the twenty-two at once - `injection_time`, `tic_injection_time`, `fragment_ions`,
+the six neighbor windows and the six ratios. All of them count ions, and without an injection
+time there is nothing to turn an ion rate into an ion count with. Bruker and Sciex files
+tested here are in this position.
+
+**An injection time that never moves.** Only `injection_time` and `tic_injection_time` go: a
+constant cannot be split on, and TIC times a constant is `log_tic` rescaled. The other
+thirteen stay. They are scaled by the injection time but are not it, and multiplying a column
+by a positive constant does not reorder it, so every split a tree could have made on them is
+still available.
+
+Whether it moves is decided from the whole matched column, not from a sample of the head of
+the run. An ion trap holds its injection time at the method's ceiling until the trap actually
+fills, which on a gradient is the entire void volume - so a run judged on its first few hundred
+spectra reads as constant no matter what it does later. Every Stellar run tested does exactly
+that, one of them with two thirds of its spectra off the ceiling.
+
+The fitted model records the names it actually used, and loading a model whose feature list
+does not match the extractor is a hard error rather than a warning.
 
 **No feature is ever NaN.** Rows that cannot supply a selected feature are dropped before
 training. This is a hard requirement, not tidiness: the tree implementation maps NaN to the
@@ -265,14 +282,20 @@ Measured on the corrected files, by rematching the library against the written o
 
 | Stellar HeLa GPF-DIA, 5 files | Uncorrected | Corrected |
 |---|---|---|
-| Fragments matched | 352,349 | 358,340 |
-| Mean delta m/z | -0.0134 Th | -0.0057 Th |
-| Median delta m/z | -0.0082 Th | -0.0048 Th |
-| Std delta m/z | 0.1180 Th | 0.0883 Th |
-| MAD delta m/z | 0.0800 Th | 0.0469 Th |
-| RMS delta m/z | 0.1188 Th | 0.0885 Th |
+| Fragments matched | 352,349 | 358,334 |
+| Mean delta m/z | -0.0134 Th | -0.0023 Th |
+| Median delta m/z | -0.0082 Th | -0.0025 Th |
+| Std delta m/z | 0.1180 Th | 0.0872 Th |
+| MAD delta m/z | 0.0800 Th | 0.0464 Th |
+| RMS delta m/z | 0.1188 Th | 0.0872 Th |
 
-A 41% reduction in MAD and a 25% reduction in standard deviation.
+A 42% reduction in MAD and a 26% reduction in standard deviation.
+
+Twenty features are used on this cohort. Most of the gain comes from the thirteen
+ion-population features - `ions_above_0_1` alone carries the highest permutation importance of
+any feature in the model. See the note on them and on injection time under
+[the CLI reference](cli-reference.md); the release notes record what switching them off costs,
+which is most of the correction.
 
 **MARS does not help every instrument.** On an Astral plate the same pipeline moves the
 spread by under 2%, because the data arrives already calibrated to about 4 ppm and there is

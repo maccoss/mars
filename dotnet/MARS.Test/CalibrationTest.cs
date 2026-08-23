@@ -204,7 +204,9 @@ public sealed class CalibrationTest : IDisposable
             table.Set(MarsFeature.LogIntensity, 3.0 + ((i % 30) * 0.05));
 
             // One row in ten has no injection time, as happens when an instrument omits it.
-            table.Set(MarsFeature.InjectionTime, i % 10 == 0 ? double.NaN : 0.02);
+            // The rest vary: a constant injection time is not selected as a feature at all,
+            // and a row is only dropped for a value missing from a feature in use.
+            table.Set(MarsFeature.InjectionTime, i % 10 == 0 ? double.NaN : 0.02 + ((i % 13) * 0.001));
             table.DeltaMz.Add(0.001 * (i % 7));
             table.ObservedIntensity.Add(1000.0);
             table.PeptideGroup.Add(i / 8);

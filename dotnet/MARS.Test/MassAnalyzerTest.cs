@@ -2,6 +2,8 @@
 
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 using MARS.Cli;
 using MARS.Core;
 using MARS.IO;
@@ -88,6 +90,59 @@ public class MassAnalyzerTest
     [Fact]
     public void AFileThatDoesNotSayIsUnknownRatherThanGuessed() =>
         Assert.Equal(MassAnalyzerClass.Unknown, Detect(SyntheticMzML.MassAnalyzerLayout.None));
+
+    /// <summary>
+    /// A cohort spanning two kinds of instrument gets one tolerance, so it has to be said out
+    /// loud. The tolerance is set from the first file; every other file is measured against it.
+    /// </summary>
+    [Fact]
+    public void AMixedCohortIsReported()
+    {
+        var analyzers = new Dictionary<string, MassAnalyzerClass>
+        {
+            ["stellar.mzML"] = MassAnalyzerClass.UnitResolution,
+            ["astral.mzML"] = MassAnalyzerClass.HighResolution,
+        };
+
+        string? odd = CalibrateCommand.FirstAnalyzerDisagreement(
+            analyzers.Keys.ToList(), f => analyzers[f], MassAnalyzerClass.UnitResolution);
+
+        Assert.Equal("astral.mzML", odd);
+    }
+
+    [Fact]
+    public void ACohortOnOneKindOfInstrumentIsNotReported()
+    {
+        var analyzers = new Dictionary<string, MassAnalyzerClass>
+        {
+            ["a.mzML"] = MassAnalyzerClass.HighResolution,
+            ["b.mzML"] = MassAnalyzerClass.HighResolution,
+        };
+
+        Assert.Null(CalibrateCommand.FirstAnalyzerDisagreement(
+            analyzers.Keys.ToList(), f => analyzers[f], MassAnalyzerClass.HighResolution));
+    }
+
+    /// <summary>
+    /// A file that does not name its analyzer is not evidence of a mixed cohort. Warning on
+    /// it would fire on most mzML in existence, and a warning that always fires is noise.
+    /// </summary>
+    [Fact]
+    public void AFileThatDoesNotSayIsNotADisagreement()
+    {
+        var analyzers = new Dictionary<string, MassAnalyzerClass>
+        {
+            ["known.mzML"] = MassAnalyzerClass.HighResolution,
+            ["silent.mzML"] = MassAnalyzerClass.Unknown,
+        };
+
+        Assert.Null(CalibrateCommand.FirstAnalyzerDisagreement(
+            analyzers.Keys.ToList(), f => analyzers[f], MassAnalyzerClass.HighResolution));
+
+        // And with nothing detected at all there is nothing to compare against.
+        Assert.Null(CalibrateCommand.FirstAnalyzerDisagreement(
+            analyzers.Keys.ToList(), f => analyzers[f], MassAnalyzerClass.Unknown));
+    }
 
     /// <summary>
     /// Adding the configuration list must not disturb a fixture without one - every other
