@@ -286,15 +286,18 @@ likely to be:
 
 | Candidate | Updates | Discovery |
 |---|---|---|
-| **Skyline-daily** | ClickOnce, frequent | Verified below |
-| **Skyline** | ClickOnce, much less often | Same mechanism, different name and token |
+| **Skyline-daily** | ClickOnce, frequent | Verified below; both channels verified |
+| **Skyline** | ClickOnce, much less often | Same mechanism and the **same** token; see below |
 | **msconvert** | Manual download only | Unreliable - see below |
 
-Skyline-daily first because it updates fastest, so its SDK tracks upstream without MARS
-releasing anything. Regular Skyline uses the same ClickOnce machinery and the same recipe with
-a different `DisplayName` and `PublicKeyToken`; it should be checked and used when it is the
-only one present, accepting that its SDK may lag. msconvert last: it does not update itself at
-all, and its registry entry is the least useful of the three.
+Skyline-daily first because it updates fastest, so its SDK will track upstream without MARS
+releasing anything. Regular Skyline uses the same ClickOnce machinery and should be used when
+it is the only one present.
+
+**Both channels ship the same Thermo SDK today**: 5.0.0.93, on Skyline 26.1.0.57 and
+Skyline-daily 26.1.1.209 alike, both installed here. So the ordering is about which will move
+first once pwiz-sharp merges, not about a difference that exists now. msconvert last: it does
+not update itself at all, and its registry entry is the least useful of the three.
 
 **Because they lag by different amounts, the version has to be checked rather than assumed.**
 Whatever is found, read the `FileVersion` of `ThermoFisher.CommonCore.RawFileReader.dll` and
@@ -344,14 +347,24 @@ Skyline-daily installed on the development machine:
    ...\Apps\2.0\<hash>\<hash>\skyl..tion_9286511f3362df93_001a.0001_6c454ec13578dbec\
    ```
 
-   Several directories match the token - previous versions are kept, and `..exe_` folders sit
-   alongside `..tion_` ones. Pick by matching the registry's `DisplayVersion` against the
-   `Skyline-daily.exe` file version in each candidate, rather than by newest timestamp: an
-   update in progress would make the timestamp lie.
+   **The token does not identify which Skyline.** Skyline and Skyline-daily are signed with
+   the same key and share `9286511f3362df93`, so both match the same glob - an earlier
+   version of this note assumed they differed, and an implementation built on that would
+   have picked whichever it enumerated first. Several directories match for the further
+   reason that previous versions are kept, and `..exe_` folders sit beside `..tion_` ones
+   carrying no vendor DLLs at all.
 
-That directory is the one holding the vendor assemblies. On this machine it holds
-`ThermoFisher.CommonCore.RawFileReader.dll` at **5.0.0.93** against Skyline-daily 26.1.1.209,
-which is the version gap above, measured on a current daily build rather than assumed.
+   Identify the right one by the **executable it contains** - `Skyline.exe` against
+   `Skyline-daily.exe` - and confirm with the version. Compare versions **parsed, not as
+   strings**: the registry says `26.1.0.57` where the file says `26.1.0.057`, equal as a
+   version and unequal as text. Do not select by newest timestamp; an update in progress
+   would make that lie.
+
+That directory is the one holding the vendor assemblies; the `..exe_` folders hold none, which
+is a cheap way to reject them. On this machine both channels hold
+`ThermoFisher.CommonCore.RawFileReader.dll` at **5.0.0.93** - Skyline 26.1.0.57 and
+Skyline-daily 26.1.1.209 - which is the version gap above, measured on current builds of
+both rather than assumed.
 
 **msconvert is the awkward one to find.** ProteoWizard is installed on the development
 machine and registers under `HKLM`, but the entry carries **no `InstallLocation`**, there is no
