@@ -46,13 +46,27 @@ public sealed class ErrorScale
     /// </summary>
     public double[] Convert(double[] error, double[] mz)
     {
+        // An empty error array is not a mismatch: `mars qc` draws the report with no
+        // after-correction series, and passes one.
         if (!IsPpm || error.Length == 0) return error;
+
+        // Beyond that the two arrays have to describe the same rows, because each is converted
+        // by its own m/z. Filling a short one with zeros would put 0 ppm into a QC figure for
+        // every row past the end of it - which reads as a perfectly calibrated fragment.
+        if (error.Length != mz.Length)
+        {
+            throw new ArgumentException(
+                $"{error.Length:N0} error values and {mz.Length:N0} m/z values: per-row ppm " +
+                "conversion needs one m/z per error.",
+                nameof(mz));
+        }
 
         var converted = new double[error.Length];
         for (int i = 0; i < error.Length; i++)
         {
-            double denominator = i < mz.Length ? mz[i] : 0;
-            converted[i] = denominator > 0 ? error[i] / denominator * 1e6 : 0;
+            // A non-positive m/z cannot be converted and is left at zero rather than made
+            // infinite; no real fragment has one.
+            converted[i] = mz[i] > 0 ? error[i] / mz[i] * 1e6 : 0;
         }
 
         return converted;

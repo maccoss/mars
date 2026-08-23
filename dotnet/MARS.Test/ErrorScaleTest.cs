@@ -11,6 +11,33 @@ namespace MARS.Test;
 
 public class ErrorScaleTest
 {
+    /// <summary>
+    /// The two arrays are converted row for row, so a short one is a bug rather than a set of
+    /// rows worth zero ppm - which is what it used to produce, and reads in a QC figure as a
+    /// perfectly calibrated fragment.
+    /// </summary>
+    [Fact]
+    public void AShortMzArrayIsRefusedRatherThanPaddedWithZeros()
+    {
+        var error = new[] { 0.001, 0.001, 0.001 };
+        var mz = new[] { 500.0, 1000.0 };
+
+        ArgumentException thrown =
+            Assert.Throws<ArgumentException>(() => ErrorScale.Ppm.Convert(error, mz));
+        Assert.Contains("one m/z per error", thrown.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// `mars qc` draws its report with no after-correction series and passes an empty array
+    /// for it. That is not a mismatch, and refusing it would break every qc HTML report.
+    /// </summary>
+    [Fact]
+    public void AnEmptyErrorSeriesIsNotAMismatch()
+    {
+        double[] converted = ErrorScale.Ppm.Convert(Array.Empty<double>(), new[] { 500.0, 900.0 });
+        Assert.Empty(converted);
+    }
+
     [Fact]
     public void PpmConversionUsesEachRowsOwnMz()
     {

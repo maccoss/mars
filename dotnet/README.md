@@ -20,8 +20,12 @@ Targets `net8.0` by default, which runs unchanged on the .NET 9 and .NET 10 runt
 With a .NET 10 SDK installed, build the full matrix:
 
 ```
-dotnet build -c Release -p:MarsTargetFrameworks="net8.0;net10.0"
+dotnet build -c Release -p:MarsIncludeNet10=true
 ```
+
+Not `-p:MarsTargetFrameworks="net8.0;net10.0"`: a semicolon-separated list cannot survive the
+command line. The shell eats the quotes, and escaping the separator as `%3B` makes MSBuild read
+the whole string as one target framework name.
 
 One NuGet reference: `Parquet.Net`, for DIA-NN libraries. It carries a native
 compression library (`nironcompress`), which is the only native code in the tree.

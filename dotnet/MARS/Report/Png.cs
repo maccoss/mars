@@ -29,8 +29,23 @@ public static class Png
     /// <param name="rgb">Row-major RGB triples, <paramref name="width"/> * <paramref name="height"/> * 3 bytes.</param>
     public static byte[] Encode(byte[] rgb, int width, int height)
     {
-        if (rgb.Length != width * height * 3)
-            throw new ArgumentException("Pixel buffer does not match the given dimensions.", nameof(rgb));
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                width <= 0 ? nameof(width) : nameof(height),
+                $"A PNG needs positive dimensions; got {width}x{height}.");
+        }
+
+        // In long arithmetic: a large enough width times height overflows int and can wrap to
+        // the buffer's actual length, letting a mismatched buffer through to be written as a
+        // malformed file.
+        long expected = (long)width * height * 3;
+        if (rgb.Length != expected)
+        {
+            throw new ArgumentException(
+                $"Pixel buffer is {rgb.Length:N0} bytes; {width}x{height} RGB needs {expected:N0}.",
+                nameof(rgb));
+        }
 
         using var png = new MemoryStream();
         png.Write(Signature, 0, Signature.Length);

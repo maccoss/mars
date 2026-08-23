@@ -64,9 +64,18 @@ public static class VerifyCommand
         // delete it - losing raw data to a command whose whole purpose is to prove nothing
         // was lost. Compared on full paths so that a relative path and an absolute one to
         // the same file are still caught.
-        if (string.Equals(
-                Path.GetFullPath(outputPath), Path.GetFullPath(inputPath),
-                StringComparison.OrdinalIgnoreCase))
+        //
+        // Case matters where the filesystem says it does. Linux distinguishes run.mzML from
+        // Run.mzML, and refusing that pair would be refusing a legitimate output path;
+        // Windows and macOS default to not distinguishing them, where treating them as
+        // different is how the input gets destroyed. The error the comparison can still make
+        // is to over-refuse on a case-insensitive Linux mount, which costs a rename rather
+        // than a file.
+        StringComparison pathComparison = OperatingSystem.IsLinux()
+            ? StringComparison.Ordinal
+            : StringComparison.OrdinalIgnoreCase;
+
+        if (string.Equals(Path.GetFullPath(outputPath), Path.GetFullPath(inputPath), pathComparison))
         {
             Log.Error(
                 "--output is the same file as the input. mars verify writes a round-tripped " +
