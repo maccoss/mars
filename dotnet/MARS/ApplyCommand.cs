@@ -105,9 +105,9 @@ public static class ApplyCommand
         // run still completes and still corrects. It just does it with two features pinned
         // to a value the model saw for no real spectrum, and nothing about the output says
         // so, which is why it is worth a line here.
-        bool modelWantsTemperature =
-            calibrator.Features.Contains(MarsFeature.Rfa2Temp) ||
-            calibrator.Features.Contains(MarsFeature.Rfc2Temp);
+        bool wantsRfa2 = calibrator.Features.Contains(MarsFeature.Rfa2Temp);
+        bool wantsRfc2 = calibrator.Features.Contains(MarsFeature.Rfc2Temp);
+        bool modelWantsTemperature = wantsRfa2 || wantsRfc2;
 
         if (modelWantsTemperature && temperatureDirectory is null)
         {
@@ -127,11 +127,13 @@ public static class ApplyCommand
                 ? null
                 : TemperatureCsvReader.Find(file, temperatureDirectory, Log.Debug);
 
-            if (modelWantsTemperature && temperatureDirectory is not null && temperatures is null)
+            // Find always returns a set, empty when nothing matched, so the question is which
+            // logs it actually carries - not whether it returned one. Asked per generator,
+            // because a directory can hold the RFA2 log for a run and not the RFC2.
+            if (temperatures is not null)
             {
-                Log.Warn(
-                    $"No temperature CSV matched {Path.GetFileName(file)}; its RF temperature " +
-                    "features will be treated as missing.");
+                if (wantsRfa2 && temperatures.Rfa2 is null) WarnMissingLog(file, "RFA2");
+                if (wantsRfc2 && temperatures.Rfc2 is null) WarnMissingLog(file, "RFC2");
             }
 
             string outputFile = CorrectedFileWriter.OutputPathFor(file, outputDirectory, outputFormat);
@@ -169,4 +171,10 @@ public static class ApplyCommand
         Log.Info($"Done in {stopwatch.Elapsed.TotalSeconds:F1} s. Output directory: {outputDirectory}");
         return failures > 0 ? Program.ExitOutputValidationFailure : Program.ExitSuccess;
     }
+
+    private static void WarnMissingLog(string file, string generator) =>
+        Log.Warn(
+            $"No {generator} temperature log matched {Path.GetFileName(file)}, but the model uses " +
+            $"{generator.ToLowerInvariant()}_temp. That feature will be treated as missing for " +
+            "every spectrum in this run.");
 }

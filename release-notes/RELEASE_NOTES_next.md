@@ -295,6 +295,17 @@ the QC report is drawn in.
   read out of the file being validated, which is exactly the file that cannot be trusted, and a
   small one had the validator try to read the entire run as an index list.
 
+- **`mars compare` stops when the files stop lining up.** It pairs spectra by position and
+  checks the ids agree, which is right for comparing a file against a correction of itself, but
+  it cannot realign. One inserted or removed spectrum put every later pair against the wrong
+  spectrum and counted each as a difference, so two files differing by one spectrum reported as
+  differing everywhere. It now reports where alignment was lost and stops, and says the counts
+  cover only what preceded it. The doc comment claimed it matched by id, which it never did.
+
+- **`--dump-predictions` validates its array up front.** A predictions array not parallel to
+  the match table failed partway through writing millions of rows, leaving a half-written dump
+  and an index-out-of-range naming nothing.
+
 - **A mistyped option now stops the run instead of being ignored.** Unrecognized options were
   reported as a warning *after* the command finished, so `--tolernace-ppm 10` silently
   calibrated against the 0.3 Th default and `--output-dir` on `mars qc` wrote the report to

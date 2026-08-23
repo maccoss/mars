@@ -20,6 +20,12 @@ public sealed class MzMLComparison
 
     public long SpectraOnlyInB { get; set; }
 
+    /// <summary>
+    /// True when the two files stopped holding the same spectra in the same order, so the
+    /// comparison ended early and the counts describe only what preceded it.
+    /// </summary>
+    public bool Diverged { get; set; }
+
     public long MzValuesCompared { get; set; }
 
     public long MzValuesDiffering { get; set; }
@@ -40,9 +46,17 @@ public sealed class MzMLComparison
 public static class MzMLComparer
 {
     /// <summary>
-    /// Streams both files in parallel, matching spectra by id, and compares decoded m/z and
-    /// intensity arrays bit for bit.
+    /// Streams both files in parallel, pairing spectra by position and checking that the ids
+    /// agree, then compares decoded m/z and intensity arrays bit for bit.
     /// </summary>
+    /// <remarks>
+    /// Positional, not a merge by id: this compares a file against a correction of itself, or
+    /// two corrections of one input, where the spectra are the same set in the same order. It
+    /// does not realign. One inserted or removed spectrum therefore puts everything after it
+    /// out of step, and the run says so and stops rather than reporting a tally that counts
+    /// every remaining pair as a difference - which would read as "these files are unrelated"
+    /// when the truth is "these files differ by one spectrum".
+    /// </remarks>
     /// <param name="maxProblemsReported">Cap on the detail list; counters stay exact.</param>
     public static MzMLComparison Compare(string pathA, string pathB, int maxProblemsReported = 20)
     {
@@ -77,11 +91,16 @@ public static class MzMLComparer
 
             if (!string.Equals(left.Id, right.Id, StringComparison.Ordinal))
             {
-                if (result.Problems.Count < maxProblemsReported)
-                    result.Problems.Add($"spectrum id mismatch: '{left.Id}' vs '{right.Id}'");
+                // Everything after this point is compared against the wrong spectrum, so the
+                // counts would stop meaning anything. Report where alignment was lost and stop.
+                result.Problems.Add(
+                    $"spectrum id mismatch at position {result.SpectraCompared:N0}: '{left.Id}' " +
+                    $"vs '{right.Id}'. The files do not hold the same spectra in the same order, " +
+                    "so the comparison stops here; counts cover the spectra up to this point.");
+                result.Diverged = true;
                 result.SpectraOnlyInA++;
                 result.SpectraOnlyInB++;
-                continue;
+                break;
             }
 
             result.SpectraCompared++;

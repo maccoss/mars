@@ -49,6 +49,18 @@ public static class MatchDumpWriter
                 "keepDetail: true before dumping.");
         }
 
+        // Checked before a file is opened rather than discovered partway through writing
+        // millions of rows, where the failure is a half-written dump and an index-out-of-range
+        // with nothing in it naming the cause.
+        if (predictions is not null && predictions.Length != table.Count)
+        {
+            throw new ArgumentException(
+                $"The match table has {table.Count:N0} rows but {predictions.Length:N0} " +
+                "predictions were supplied. They have to be parallel: each row's prediction is " +
+                "written beside it and its residual computed from it.",
+                nameof(predictions));
+        }
+
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 

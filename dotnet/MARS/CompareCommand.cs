@@ -85,6 +85,13 @@ public static class CompareCommand
             Console.Out.WriteLine($"spectra only in B     {comparison.SpectraOnlyInB:N0}");
         }
 
+        if (comparison.Diverged)
+        {
+            Console.Out.WriteLine(
+                "comparison stopped     the files stopped holding the same spectra in the same "
+                + "order; the counts above cover only what came before that point");
+        }
+
         foreach (string problem in comparison.Problems) Log.Info("  " + problem);
 
         Log.Info($"Compared in {stopwatch.Elapsed.TotalSeconds:F1} s");

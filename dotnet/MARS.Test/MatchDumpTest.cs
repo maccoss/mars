@@ -22,6 +22,37 @@ public sealed class MatchDumpTest
         return builder.Build();
     }
 
+    /// <summary>
+    /// A predictions array that is not parallel to the table is refused before the file is
+    /// opened, rather than throwing partway through millions of rows with a half-written dump
+    /// on disk and nothing naming the cause.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(0)]
+    public void AMismatchedPredictionsArrayIsRefusedUpFront(int predictionCount)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "mars-dump-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string path = Path.Combine(directory, "dump.csv");
+            MatchTable table = BuildTable();
+            Assert.NotEqual(predictionCount, table.Count);
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() =>
+                MatchDumpWriter.Write(path, table, BuildLibrary(), new double[predictionCount]));
+
+            Assert.Contains("parallel", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(path), "no file should be left behind");
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        }
+    }
+
     private static MatchTable BuildTable()
     {
         MarsFeature[] collect = { MarsFeature.PrecursorMz, MarsFeature.FragmentMz, MarsFeature.LogIntensity };
