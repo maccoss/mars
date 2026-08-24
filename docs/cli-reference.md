@@ -14,9 +14,9 @@ whether you should trust it.
 A sensible first session:
 
 ```bash
-mars qc --mzml-dir runs/ --prism-csv report.csv        # is there anything to correct?
+mars qc --mzml-dir runs/ --prism-report report.csv     # is there anything to correct?
 mars verify runs/one.mzML                              # can MARS handle this file at all?
-mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
+mars calibrate --mzml-dir runs/ --prism-report report.csv --output-dir corrected/
 ```
 
 ## Exit codes
@@ -333,7 +333,7 @@ a systematic error here worth removing? On an already well-calibrated instrument
 is often no, and the honest outcome is to leave the files alone.
 
 ```bash
-mars qc --mzml-dir runs/ --prism-csv report.csv
+mars qc --mzml-dir runs/ --prism-report report.csv
 mars qc --mzml-dir runs/ --library lib.blib --by-file
 ```
 
@@ -341,7 +341,7 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 |---|---|
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
-| `--prism-csv <path>` | Skyline PRISM report |
+| `--prism-report <path>` | Skyline PRISM report, `.csv` or `.parquet`. `--prism-csv` is an accepted alias |
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
@@ -375,7 +375,7 @@ whether your tolerance is sane before training anything. See
 Matches, trains, and writes recalibrated files named `{input}-mars.mzML`.
 
 ```bash
-mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
+mars calibrate --mzml-dir runs/ --prism-report report.csv --output-dir corrected/
 ```
 
 ### Input
@@ -384,7 +384,7 @@ mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
 |---|---|
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
-| `--prism-csv <path>` | Skyline PRISM report (theoretical `Product Mz`). Recommended |
+| `--prism-report <path>` | Skyline PRISM report, `.csv` or `.parquet` (theoretical `Product Mz`). Recommended. `--prism-csv` is an accepted alias |
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |

@@ -37,7 +37,7 @@ and the library fragment, carrying every feature the model will see.
 
 ```bash
 # C#
-mars calibrate --mzml run.mzML --prism-csv report.csv \
+mars calibrate --mzml run.mzML --prism-report report.csv \
     --no-dedupe-library --no-recalibrate --dump-matches cs.csv --output-dir out/
 
 # Python

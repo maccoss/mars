@@ -9,10 +9,13 @@ Four sources are supported, and they differ in how well they satisfy that requir
 
 | Source | Option | m/z quality | Notes |
 |---|---|---|---|
-| Skyline PRISM report | `--prism-csv` | Theoretical | Recommended. Carries per-replicate RT windows. |
+| Skyline PRISM report | `--prism-report` | Theoretical | Recommended. `.csv` or `.parquet`. Carries per-replicate RT windows. |
 | DIA-NN library | `--library report-lib.parquet` | Theoretical | Needs `report.parquet` for RT windows. |
 | BiblioSpec `.blib` | `--library lib.blib` | Recomputed from sequence | Requires peak annotations. |
-| PRISM report as `--library` | `--library report.csv` | Theoretical | Same reader as `--prism-csv`. |
+| PRISM report as `--library` | `--library report.csv` | Theoretical | Same reader as `--prism-report`. |
+
+`--prism-csv` is still accepted and does the same thing. The option was named before the report
+could arrive as anything but CSV.
 
 ## Skyline PRISM report (recommended)
 
@@ -26,6 +29,20 @@ A Skyline transition report exported with the
 [PRISM report template](../Skyline-PRISM-Report/Skyline-PRISM.skyr). `Product Mz` is
 Skyline's computed theoretical value, which is exactly what MARS wants, and `Start Time` /
 `End Time` give a real per-peptide elution window rather than a guess.
+
+### CSV or parquet
+
+Skyline writes whichever the output name asks for - it picks parquet from a `.parquet`
+extension - and PRISM asks for parquet, because it is far smaller: the five-file Stellar report
+here is 19.6 MB as CSV and 1.5 MB as parquet. MARS reads either, and decides which by looking
+at the file rather than at its name, so a report is a report whatever it has been called.
+
+The parquet carries the same columns with the spaces removed - `ProductMz` for `Product Mz` -
+and native types where the CSV has text. A report that has been through a converter and kept
+the spaced names is also accepted; the distinction carries no meaning.
+
+Nothing else changes. The same report read either way produces the same library, which is
+asserted in the test suite, and on the reference cohort both give byte-identical QC output.
 
 Required columns:
 
@@ -85,22 +102,25 @@ inside the window.
 > real DIA-NN output. Treat the first run against a real DIA-NN result as a check of the
 > reader as much as of the data.
 
-### Compression codecs on Arm Windows and Intel macOS
+### Compression codecs on Arm Windows
 
 `Parquet.Net` delegates some codecs to a native library that is only published for
-`win-x64`, `linux-x64`, `linux-arm64` and `osx-arm64`. On the other two platforms MARS
-ships for - **Windows on Arm and Intel macOS** - that library is absent, and parquet falls
-back to managed implementations for most codecs:
+`win-x64`, `linux-x64`, `linux-arm64` and `osx-arm64`. On the remaining platform MARS ships
+for - **Windows on Arm** - that library is absent, and parquet falls back to managed
+implementations for most codecs:
 
 | Codec | Without the native library |
 |---|---|
 | uncompressed, Snappy, Gzip, Brotli, Zstd | works |
 | LZ4, LZO | fails: "No compression codec for LZ4 is available on this platform" |
 
-Snappy is parquet's usual default and what DIA-NN writes, so this is unlikely to bite. If
-it does, the message names the codec, and the fix is to read the library on another
-platform or re-export it with Snappy. Nothing else in MARS is affected: PRISM CSV, `.blib`
-and every part of mzML processing are pure managed.
+Snappy is parquet's usual default, and what both DIA-NN and Skyline write, so this is
+unlikely to bite. If it does, the message names the codec, and the fix is to read the file on
+another platform or re-export it with Snappy.
+
+This applies to **any** parquet MARS reads, which includes a Skyline PRISM report exported as
+parquet, not only a DIA-NN library. Nothing else is affected: the PRISM CSV path,
+`.blib` and every part of mzML processing are pure managed.
 
 ## BiblioSpec (.blib)
 

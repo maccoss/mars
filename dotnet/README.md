@@ -54,7 +54,7 @@ failure.
 ```
 mars calibrate \
     --mzml-dir raw/ \
-    --prism-csv skyline-report.csv \
+    --prism-report skyline-report.csv \
     --temperature-dir temperature_csvs/ \
     --output-dir corrected/
 ```

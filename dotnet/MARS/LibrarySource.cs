@@ -25,7 +25,7 @@ public sealed class LibrarySource
     {
     }
 
-    private string? PrismCsv { get; init; }
+    private string? PrismReport { get; init; }
 
     private string? LibraryPath { get; init; }
 
@@ -37,7 +37,7 @@ public sealed class LibrarySource
 
     public static LibrarySource From(CommandLineArgs args) => new()
     {
-        PrismCsv = args.String("prism-csv"),
+        PrismReport = PrismReportPath(args),
         LibraryPath = args.String("library"),
         DiannReport = args.String("diann-report"),
         RtWindow = args.Double("rt-window") ?? 0.083,
@@ -58,23 +58,29 @@ public sealed class LibrarySource
             KeepSequences = keepSequences,
         };
 
-        if (PrismCsv is not null)
-        {
-            log($"Loading Skyline PRISM report: {PrismCsv}");
-            return PrismCsvLibraryReader.Load(PrismCsv, options, log);
-        }
+        if (PrismReport is not null) return LoadPrismReport(PrismReport, options, log);
 
         if (LibraryPath is null)
-            throw new FileNotFoundException("A library is required: --prism-csv or --library.");
+        {
+            throw new FileNotFoundException(
+                "A library is required: --prism-report or --library.");
+        }
 
         if (LibraryPath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-        {
-            log($"Loading Skyline PRISM report: {LibraryPath}");
-            return PrismCsvLibraryReader.Load(LibraryPath, options, log);
-        }
+            return LoadPrismReport(LibraryPath, options, log);
 
         if (LibraryPath.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase))
         {
+            // Both a Skyline PRISM report and a DIA-NN library arrive as .parquet, so the
+            // extension cannot choose between them. Decided by what the file holds: handing a
+            // PRISM report to the DIA-NN reader produces a complaint about a missing DIA-NN
+            // column, which tells the user nothing about what they actually did wrong.
+            if (PrismParquetLibraryReader.Looks(LibraryPath))
+            {
+                log($"Loading Skyline PRISM report: {LibraryPath}");
+                return PrismParquetLibraryReader.Load(LibraryPath, options, log);
+            }
+
             log($"Loading DIA-NN library: {LibraryPath}");
             return DiannParquetLibraryReader.Load(LibraryPath, DiannReport, runNames, log);
         }
@@ -87,5 +93,36 @@ public sealed class LibrarySource
 
         throw new InvalidDataException(
             $"Unrecognized library type '{Path.GetExtension(LibraryPath)}'. Expected .blib, .parquet or .csv.");
+    }
+
+    /// <summary>
+    /// Reads both spellings, so that whichever was given is registered with the unknown-option
+    /// check.
+    /// </summary>
+    /// <remarks>
+    /// Not `report ?? csv`: that short-circuits, so with --prism-report given, --prism-csv is
+    /// never read, and a check that learns an option is real by watching it be read reports the
+    /// alias as a typo. That exact mistake cost --resolution a release.
+    /// </remarks>
+    private static string? PrismReportPath(CommandLineArgs args)
+    {
+        string? report = args.String("prism-report");
+        string? csv = args.String("prism-csv");
+        return report ?? csv;
+    }
+
+    /// <summary>
+    /// Loads a Skyline PRISM report, whichever of the two formats Skyline wrote it in.
+    /// </summary>
+    private static SpectralLibrary LoadPrismReport(string path, PrismLibraryOptions options, Action<string> log)
+    {
+        log($"Loading Skyline PRISM report: {path}");
+
+        // By content, not by extension: a report is a report whatever it has been named, and
+        // the two formats hold the same columns.
+        if (PrismParquetLibraryReader.Looks(path))
+            return PrismParquetLibraryReader.Load(path, options, log);
+
+        return PrismCsvLibraryReader.Load(path, options, log);
     }
 }

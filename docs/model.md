@@ -529,7 +529,7 @@ the same amount of error behind, and they do.
 Reproduce it with:
 
 ```bash
-mars calibrate --mzml run.mzML --prism-csv report.csv --no-dedupe-library \
+mars calibrate --mzml run.mzML --prism-report report.csv --no-dedupe-library \
     --validation-split 0 --no-recalibrate --dump-predictions cs.csv --output-dir out/
 python dotnet/scripts/compare_models.py --csharp cs.csv
 ```

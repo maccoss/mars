@@ -29,8 +29,10 @@ public static class QcCommand
                 Options:
                       --mzml <path>          mzML file or glob (repeatable)
                       --mzml-dir <dir>       Directory of mzML files
-                      --prism-csv <path>     Skyline PRISM report: what Skyline exports
-                                             for PRISM to read, not PRISM's output
+                      --prism-report <path>  Skyline PRISM report, .csv or .parquet:
+                                             what Skyline exports for PRISM to read,
+                                             not PRISM's output. --prism-csv also
+                                             accepted
                       --library <path>       .blib, report-lib.parquet, or a Skyline
                                              PRISM report
                       --diann-report <path>  DIA-NN report.parquet

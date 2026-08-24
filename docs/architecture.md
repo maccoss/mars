@@ -185,14 +185,15 @@ files are not byte-identical across platforms even though every decoded value is
 there is not one. `MARS.IO` has `Parquet.Net`, which brings `IronCompress` and a native
 compression library - the only native code in the tree.
 
-It is confined to the DIA-NN path, and it does not fail closed: without the native library,
-Snappy (what DIA-NN writes), Gzip, Brotli, Zstd and uncompressed all still work through
-managed fallbacks, and only LZ4 and LZO fail, with a message naming the codec. That matters
-on the two shipped platforms `IronCompress` publishes no native for: **Windows on Arm and
-Intel macOS**.
+It is confined to the parquet paths - a DIA-NN library, or a Skyline PRISM report exported as
+parquet - and it does not fail closed: without the native library, Snappy (what
+both DIA-NN and Skyline write), Gzip, Brotli, Zstd and uncompressed all still work through
+managed fallbacks, and only LZ4 and LZO fail, with a message naming the codec. That matters on
+the one shipped platform `IronCompress` publishes no native for: **Windows on Arm**.
 
-Splitting `DiannParquetLibraryReader` into its own assembly would restore the pure-managed
-property for consumers that do not read DIA-NN libraries. Not done yet.
+Splitting the parquet readers into their own assembly would restore the pure-managed property
+for consumers that read neither a DIA-NN library nor a parquet PRISM report. Less attractive
+than it was, now that the PRISM path - the recommended one - can also be parquet. Not done.
 
 ## Testing
 
