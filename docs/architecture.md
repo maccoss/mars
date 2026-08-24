@@ -17,6 +17,10 @@ dotnet/
     Osprey.ML/     verbatim copies of the boosting code, hash-guarded
 ```
 
+Thirteen files carry a `// Ported from mars/....py` header naming the Python source they were
+transcribed from. That source is not in the tree - it was removed after `v26.1.0` - and is
+reachable at the `python-final` tag: `git show python-final:mars/matching.py`.
+
 The split that matters is `MARS.Core` having no I/O. Matching, feature extraction and
 correction take arrays and return arrays, which is what makes them testable without
 fabricating files and what keeps the parallel correction path free of anything that could

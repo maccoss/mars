@@ -1,0 +1,19 @@
+# Dependencies for the scripts in this directory.
+#
+# These were declared in pyproject.toml until the Python implementation was removed after
+# v26.1.0. The scripts outlived it - they compare and summarise CSV dumps and import nothing
+# from the deleted package - so what they need is declared here instead.
+#
+#   pip install -r dotnet/scripts/requirements.txt
+#
+# parity_digest.py needs NONE of this. It is standard library only, deliberately: it is the
+# check to run after touching the matcher, and a regression guard that needs a working
+# environment before it can tell you anything is a guard people stop running.
+#
+#   compare_matches.py   numpy, pandas
+#   compare_models.py    numpy, pandas, xgboost
+#
+# Unpinned, because these are diagnostics run by hand rather than anything CI depends on.
+numpy
+pandas
+xgboost

@@ -32,9 +32,13 @@ dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendor
 ```
 
 ## Running Calibration on Example Data
+
+`mars` is not on PATH: the console script came from `pip install -e .`, which went with the
+Python implementation. Use the built binary, or `dotnet run --project dotnet/MARS/MARS.csproj --`.
+
 ```bash
 cd /home/maccoss/GitHub-Repo/maccoss/mars
-mars calibrate \
+./dotnet/MARS/bin/Release/net8.0/mars calibrate \
   --mzml "example-data/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_*.mzML" \
   --prism-report example-data/Stellar-HeLa-GPF-PRISM.csv \
   --tolerance 0.3 \
@@ -48,18 +52,7 @@ Every model feature was verified against the Python implementation row by row be
 removed, and that verification is frozen as a digest per file of the reference cohort. Re-run it
 after changing the matcher or a feature.
 
-```bash
-cd /home/maccoss/GitHub-Repo/maccoss/mars
-mars calibrate --mzml example-data/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_600-700_16.mzML \
-  --prism-report example-data/Stellar-HeLa-GPF-PRISM.csv \
-  --tolerance 0.3 --min-intensity 500 \
-  --no-dedupe-library --no-recalibrate \
-  --output-dir /tmp/parity --dump-matches /tmp/parity/cs.csv
-
-python dotnet/scripts/parity_digest.py check \
-  --csv /tmp/parity/cs.csv \
-  --digest parity/golden/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_600-700_16.digest.json
-```
-
-A digest that trips means the matcher's output moved. Justify the change and regenerate the
-digest; see `parity/README.md`.
+The commands are in [`parity/README.md`](../../parity/README.md), which is the one place they
+are written down - they have already changed once, when `--prism-csv` became `--prism-report`,
+and a second copy here would be the one that missed it. That page also explains why the check
+cannot run without the reference cohort, which is not in this repository.

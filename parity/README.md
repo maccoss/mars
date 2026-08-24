@@ -21,6 +21,11 @@ CSV.
 
 ## Checking against it
 
+**The cohort is not in this repository.** `example-data/` is gitignored - the five mzML files
+and the report run to about 6 GB - so this check runs where that data is, which today means a
+maintainer's machine. That is a real limit on who can run the guard, and it is why the check is
+not a CI job. Anyone without the data can still read a digest to see what the reference asserts.
+
 Produce a dump the same way the digest was produced, then compare:
 
 ```bash

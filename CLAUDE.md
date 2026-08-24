@@ -45,7 +45,10 @@ From `dotnet/`:
 *   **Test:** `dotnet test -c Release`
 *   **Single-file binary:** `dotnet publish MARS/MARS.csproj -c Release -r <rid>
     --self-contained true -p:PublishSingleFile=true`
-*   **Check against Python:** see `docs/python-parity.md`
+*   **Check the matcher against the frozen reference:** `python dotnet/scripts/parity_digest.py
+    check --csv <dump> --digest parity/golden/<run>.digest.json`. See `parity/README.md`; and
+    `docs/python-parity.md` for how the reference was made, which needs a `v26.1.0` checkout to
+    repeat.
 
 ### Building with vendor support
 
@@ -70,8 +73,9 @@ Three things that are not obvious:
     needs. It repeats pwiz's own list because a global property replaces rather than extends
     what a project sets; keep it in step with `pwiz-sharp/Directory.Build.props`.
 
-The scripts under `dotnet/scripts/` are Python and need only their own dependencies; there is
-no package to install.
+The scripts under `dotnet/scripts/` are Python. `parity_digest.py` is standard library only;
+the two comparators need `pip install -r dotnet/scripts/requirements.txt`. There is no package
+to install - `pyproject.toml` went with the Python implementation.
 
 ## Release Notes
 

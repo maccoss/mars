@@ -66,7 +66,9 @@ python dotnet/scripts/compare_matches.py --csharp cs.csv --python py.csv
 replicates and the Python one does not, so without it the two produce different row sets
 for a reason that has nothing to do with correctness.
 
-`compare_matches.py` exits non-zero on any disagreement, so it can gate a build.
+`compare_matches.py` exits non-zero on any disagreement. It gated this comparison while both
+implementations existed; it cannot gate a build now, because nothing on `main` can produce
+the Python side. `parity_digest.py` is what a build or a review can gate on today.
 
 ### What the comparison does
 
@@ -95,6 +97,14 @@ Row agreement     matched by both 14,432    C# only 0    Python only 0
 24 columns compared, max absolute difference 0.000e+00 on every one.
 ```
 
+That is one file, and 24 columns because `compare_matches.py` compares only the columns both
+sides emit - the C# dump carries four more (`retention_time`, `entry_index`, `fragment_index`,
+`peptide_group`) that the Python one never had, which is also why the frozen digests describe 31
+columns rather than 24.
+
+The final run before the Python implementation was removed covered all five files of the cohort
+on the same terms: **352,349 rows, every shared column at 0.000e+00**, file by file.
+
 Every feature, every row, bit-identical - including all six space-charge features and the
 six ratios derived from them, `absolute_time` after re-basing, `log_tic`, `log_intensity`,
 `injection_time` and `tic_injection_time`.
@@ -115,8 +125,11 @@ for everything:
   per-peak corrected m/z values differ. Agreement there is statistical, not exact.
 - **Everything Python has no counterpart for**: `mars verify`, the byte-splicing writer,
   the `--on-reorder` policies, command-line parsing, and the cross-platform packaging.
-- **The `.blib` and DIA-NN paths**, which have their own readers on both sides. The same
-  harness applies; only the PRISM path has been run through it so far.
+- **The `.blib` and DIA-NN paths**, which had their own readers on both sides. Only the PRISM
+  CSV path was ever run through the harness, and now none of them can be: the harness needs the
+  Python implementation. The PRISM parquet reader added afterwards was never compared against
+  Python at all, because Python had no such reader - its equivalence is asserted against the
+  PRISM CSV reader instead, in the test suite.
 
 For those, ordinary tests are the only option, and the gaps are recorded in the test
 coverage notes rather than papered over.

@@ -13,14 +13,6 @@
 > This page is kept so that the Python tool's behaviour stays documented for anyone reading
 > results it produced. It is history, not instructions.
 
-> [!NOTE]
-> **This documents the frozen Python implementation.** MARS is now the C# tool; see the
-> [main README](README.md). The Python package is bug-fix only, is no longer published to
-> PyPI, and will be archived once the C# implementation has been used in earnest. It is
-> kept here so existing users can still read how it works, and because its output is the
-> reference the C# implementation is verified against
-> ([docs/python-parity.md](docs/python-parity.md)).
-
 [![PyPI version](https://img.shields.io/pypi/v/mars-ms.svg)](https://pypi.org/project/mars-ms/)
 [![Python versions](https://img.shields.io/pypi/pyversions/mars-ms.svg)](https://pypi.org/project/mars-ms/)
 [![License](https://img.shields.io/pypi/l/mars-ms.svg)](https://github.com/maccoss/mars/blob/main/LICENSE)
@@ -56,7 +48,9 @@ Mars learns m/z calibration corrections from spectral library fragment matches. 
 
 ### From PyPI
 
-The last version published was `0.1.5`. No further releases will be made.
+The last version published was `0.1.4`. `0.1.5` was prepared and never released - its notes
+are in `release-notes/RELEASE_NOTES_v0.1.5.md`, still marked "Release Date: TBD", and there is
+no `v0.1.5` tag. No further releases will be made.
 
 ```bash
 pip install mars-ms
