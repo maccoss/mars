@@ -3,18 +3,14 @@
 
 version: 2
 updates:
-  # Python dependencies (pip)
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "deps"
-    labels:
-      - "dependencies"
-      - "python"
+  # No pip entry: there is no longer a pyproject.toml for it to read. It pointed at the Python
+  # implementation, which was removed after v26.1.0, and a Dependabot ecosystem aimed at a file
+  # that is not there produces either nothing or pull requests against a deleted workflow -
+  # which is what the two that had to be closed at removal time were.
+  #
+  # A "nuget" entry would cover the C# dependencies (Parquet.Net and the test packages).
+  # Deliberately not added here: that is a decision about wanting the pull requests, not a
+  # consequence of removing Python.
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

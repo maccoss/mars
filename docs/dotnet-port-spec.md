@@ -1,11 +1,29 @@
 # MARS .NET 10 Port Specification
 
-**Status:** Draft
-**Target repo:** `mars` (this repo, alongside the existing Python)
+**Status:** Complete. The port shipped as `v26.1.0`, and the Python implementation was removed
+after it.
+**Target repo:** `mars` (this repo)
 **Author:** M. MacCoss
-**Last updated:** 2026-08-19
+**Last updated:** 2026-08-24
 
 ---
+
+> This document is kept as the record of how the port was specified and verified, so the
+> reasoning behind the C# implementation is not lost with the code it was ported from. It
+> refers throughout to Python source - `mars/matching.py`, `mars/calibration.py` and the rest -
+> which is no longer in this repository. So do the `// Ported from mars/....py` headers on
+> thirteen C# files. That source is at the `python-final` tag, and at `v26.1.0` and every
+> earlier one:
+>
+> ```bash
+> git show python-final:mars/matching.py
+> ```
+>
+> Section 3's "during the transition", section 8's acceptance gates and section 9's milestones
+> describe a state that has been and gone. They are left as written rather than rewritten in the
+> past tense, because a spec edited to match its outcome stops being evidence of what was
+> actually required beforehand. Section 10 sets the conditions for removing the Python
+> implementation; what was actually done against each is recorded there.
 
 ## 0. How to use this document
 
@@ -1012,6 +1030,24 @@ The Python implementation is removed only when **all** of the following hold:
 5. The final Python commit is tagged `python-final` so it stays reachable.
 
 Delete the code, keep the evidence.
+
+### What was actually done
+
+Recorded here rather than by editing the conditions above, so that the gate and the outcome can
+be compared.
+
+| Condition | Outcome |
+|---|---|
+| 1. Gates A-D pass | Met. Section 8. |
+| 2. A full production cohort processed and reviewed | Met. The five-file Stellar cohort and the Astral plate. |
+| 3. Golden fixtures retained permanently, with a note recording the generating commit | Met, at `parity/golden/` rather than `golden/`. Each digest carries its own `provenance` block - cohort, options, MARS version and commit, and the comparison result - instead of a single README naming one sha, and `parity/README.md` explains the whole arrangement. |
+| 4. `scripts/emit_golden.py` retained as documentation of how the fixtures were made | **Not met.** `dump_python_matches.py` was deleted rather than kept, because it imports the removed package and would be a script that cannot run. How the reference was produced is written out in `parity/README.md` instead, and the script itself is at `python-final`. This is a deviation from the condition as written. |
+| 5. The final Python commit tagged `python-final` | Met. Tagged at the last commit containing the implementation. |
+
+The fixtures are also not what this section imagined. It expected small golden files committed
+to the repository; what exists is a digest per file of the reference cohort - a hash and summary
+per column - with the full dumps attached to the `v26.1.0` release, because the dumps are 296 MB
+against a repository whose entire history is 2 MB.
 
 ---
 

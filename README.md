@@ -27,15 +27,18 @@ has anything worth correcting.
 
 ## About the Python implementation
 
-MARS began as a Python package (`mars-ms`, versions `0.1.x`). **The C# tool documented
-here is MARS going forward.** The Python implementation is frozen to bug fixes, is no
-longer published to PyPI, and will be archived once the C# one has been used in earnest.
-Its documentation is preserved in [README-python.md](README-python.md).
+MARS began as a Python package (`mars-ms`, versions `0.1.x`). **The C# tool documented here is
+MARS.** The Python implementation was removed after `v26.1.0`, so that nobody reaches for it by
+accident; it is still at that tag and every earlier one, and its documentation is preserved in
+[README-python.md](README-python.md).
 
-The C# implementation is not a rewrite that hopes to behave the same. Fragment matching
-and every model feature were verified against the Python implementation row by row: across
-160,947 matched fragments from two Stellar runs, all 24 shared columns agree with a maximum
-absolute difference of **zero**. See [docs/python-parity.md](docs/python-parity.md).
+The C# implementation is not a rewrite that hopes to behave the same. Fragment matching and
+every model feature were verified against the Python implementation row by row. That
+verification was re-taken over the full five-file reference cohort immediately before the Python
+code was removed: **352,349 matched fragments, every shared column agreeing to a maximum
+absolute difference of zero**. It is frozen in [parity/](parity/README.md) as a digest per file,
+which is what a change to the matcher is checked against now.
+See [docs/python-parity.md](docs/python-parity.md) for how the comparison was made.
 
 Where they deliberately differ, it is because the port found four defects in the Python
 implementation - including an invalid SHA-1 checksum on every mzML it has ever written.

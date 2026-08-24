@@ -4,9 +4,9 @@ MARS is a port of a Python implementation, and every feature the model sees was 
 against it row by row. That verification is what [the parity doc](../docs/python-parity.md)
 describes, and it depended on being able to run both implementations.
 
-The Python implementation is being removed from this repository. It is not gone - `v26.1.0` and
-every earlier tag carry it, and the harness that drove it - but it will not be on `main`, so
-its output cannot be regenerated here. What is kept instead is enough to answer the question
+The Python implementation has been removed from this repository. It is not gone - `v26.1.0` and
+every earlier tag carry it, and the harness that drove it - but it is not on `main`, so its
+output cannot be regenerated here. What is kept instead is enough to answer the question
 the harness existed to answer: **does the matcher still produce what it produced when it was
 verified?**
 
@@ -20,6 +20,11 @@ CSV.
 `SHA256SUMS.txt`, the checksums of the archived dumps described below.
 
 ## Checking against it
+
+**The cohort is not in this repository.** `example-data/` is gitignored - the five mzML files
+and the report run to about 6 GB - so this check runs where that data is, which today means a
+maintainer's machine. That is a real limit on who can run the guard, and it is why the check is
+not a CI job. Anyone without the data can still read a digest to see what the reference asserts.
 
 Produce a dump the same way the digest was produced, then compare:
 

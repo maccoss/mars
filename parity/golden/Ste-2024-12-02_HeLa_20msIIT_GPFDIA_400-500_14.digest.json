@@ -250,11 +250,14 @@
     }
   ],
   "provenance": {
+    "dumped_at_commit": "f475478",
     "library": "example-data/Stellar-HeLa-GPF-PRISM.csv",
-    "mars_commit": "f475478",
     "mars_version": "26.1.0",
     "mzml": "Ste-2024-12-02_HeLa_20msIIT_GPFDIA_400-500_14.mzML",
     "options": "--tolerance 0.3 --min-intensity 500 --no-dedupe-library --no-recalibrate",
+    "rechecked_at_commit": "427a2e1",
+    "rechecked_note": "The dump was taken at the commit above, before the PRISM CSV reader was rewritten to share a loader with the parquet one (e6350f3). Re-checked at this commit and every column is unchanged, so the reference holds against the current reader as well as the one it was taken from.",
+    "rechecked_on": "2026-08-24",
     "verified_against": "Python mars 0.1.5, 14432 rows, compare_matches.py max abs diff 0.000e+00 on every shared column",
     "verified_on": "2026-08-24"
   },

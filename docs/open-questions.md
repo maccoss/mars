@@ -99,16 +99,15 @@ Worth revisiting only if the error floor moves - if the mismatched-peak populati
 with better, or if a transferred model turns out to be capacity-limited rather than
 noise-limited.
 
-## The Python CLI's import cost
+## ~~The Python CLI's import cost~~ (closed)
 
-`mars/cli.py` imports `__version__` from the package root, which runs
-`mars/__init__.py` and so eagerly imports the submodules and their dependencies on
-every invocation - including `mars --version`. Reading the distribution metadata
-directly would avoid both the side effects and the startup cost.
+`mars/cli.py` imported `__version__` from the package root, which ran `mars/__init__.py` and so
+eagerly imported the submodules and their dependencies on every invocation - including
+`mars --version`.
 
-Raised by the Copilot review on PR #9 and **not applied**: the Python implementation is
-frozen to bug fixes, and startup cost is not a bug. Worth doing only if that track is
-unfrozen; if it is retired as planned, this closes with it.
+Raised by the Copilot review on PR #9 and never applied, on the grounds that the Python
+implementation was frozen and startup cost is not a bug. It said this would close if that track
+were retired. It has been: the Python implementation was removed after `v26.1.0`.
 
 ## Reading vendor RAW directly, via pwiz-sharp
 

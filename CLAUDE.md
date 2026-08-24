@@ -9,8 +9,8 @@ from the Thermo Stellar instrument. It learns the systematic part of the m/z err
 spectral library matches with gradient boosted trees, then subtracts it from every peak and
 writes a corrected mzML.
 
-The shipping implementation is the C# one under `dotnet/`. The Python package in `mars/` is
-frozen; see "MARS is the C# implementation" below.
+MARS is the C# implementation under `dotnet/`. The Python implementation it was ported from
+has been removed; see "The Python implementation is gone" below.
 
 ## Continuous Integration (CI/CD)
 
@@ -35,10 +35,7 @@ The repository uses GitHub Actions for CI/CD, defined in `.github/workflows/`.
     the five artifacts and the GitHub Release. Also runs manually to build artifacts without
     releasing.
 
-3.  **Tests (`tests.yml`)** - the frozen Python package's pytest and ruff run, scoped to
-    `mars/`, `tests/` and `pyproject.toml` so a C#-only change does not trigger them.
-
-There is no PyPI workflow. The Python package is no longer released.
+There is no Python workflow and no PyPI workflow. Both went with the Python implementation.
 
 ## Common Development Tasks
 
@@ -48,7 +45,10 @@ From `dotnet/`:
 *   **Test:** `dotnet test -c Release`
 *   **Single-file binary:** `dotnet publish MARS/MARS.csproj -c Release -r <rid>
     --self-contained true -p:PublishSingleFile=true`
-*   **Check against Python:** see `docs/python-parity.md`
+*   **Check the matcher against the frozen reference:** `python dotnet/scripts/parity_digest.py
+    check --csv <dump> --digest parity/golden/<run>.digest.json`. See `parity/README.md`; and
+    `docs/python-parity.md` for how the reference was made, which needs a `v26.1.0` checkout to
+    repeat.
 
 ### Building with vendor support
 
@@ -73,7 +73,9 @@ Three things that are not obvious:
     needs. It repeats pwiz's own list because a global property replaces rather than extends
     what a project sets; keep it in step with `pwiz-sharp/Directory.Build.props`.
 
-For the frozen Python package: `pip install -e ".[dev]"`, `pytest tests/`, `ruff check .`
+The scripts under `dotnet/scripts/` are Python. `parity_digest.py` is standard library only;
+the two comparators need `pip install -r dotnet/scripts/requirements.txt`. There is no package
+to install - `pyproject.toml` went with the Python implementation.
 
 ## Release Notes
 
@@ -94,24 +96,33 @@ authoritative process; the short version:
 *   `docs/` is the detailed documentation: the algorithm, the model and training, library
     guidance, the mzML passthrough contract, the parity harness, and the port
     specification. Update these when behaviour changes, not just the code comments.
-*   `README.md` is what a new user reads first and documents the C# tool.
-    `README-python.md` preserves the frozen Python implementation's documentation; leave it
-    as history rather than extending it.
+*   `README.md` is what a new user reads first. `README-python.md` documents the Python
+    implementation that was removed, and says where to find it; leave it as a signpost rather
+    than extending it.
 
-## MARS is the C# implementation
+## The Python implementation is gone
 
-The C# implementation under `dotnet/` **is** MARS. All new work goes there.
+The C# implementation under `dotnet/` **is** MARS. The Python one it was ported from was
+removed after `v26.1.0`, so that nobody reaches for it by accident. It is not lost: `v26.1.0`
+and every earlier tag carry it, along with the harness that drove it.
 
-The Python implementation is **frozen**: bug fixes only, no new features. It is no longer
-published to PyPI and will be archived once the C# one has been used in earnest. Do not
-add features to it, and do not port a Python quirk into C# without checking
-`docs/dotnet-port-spec.md` section 10a first - four of them are known defects that C#
-deliberately does not reproduce.
+Do not port a Python quirk into C# without checking `docs/dotnet-port-spec.md` section 10a
+first - four of them are known defects that C# deliberately does not reproduce.
 
-Fragment matching and every model feature are verified against the Python implementation
-row by row; see `docs/python-parity.md`. If you change the matcher or a feature, re-run
-that comparison. A change that moves it is either a bug or a deliberate divergence that
-belongs in section 10a - it is not something to accept quietly.
+**The parity check still exists, and still matters.** Fragment matching and every model feature
+were verified against the Python implementation row by row before it went, and that verification
+is frozen in `parity/golden/` as a digest per file of the reference cohort. If you change the
+matcher or a feature, re-run it:
+
+    python dotnet/scripts/parity_digest.py check --csv <dump> --digest parity/golden/<run>.digest.json
+
+A digest that trips means the matcher's output moved. That is what a deliberate change to the
+matcher does, so it is a prompt to justify the change and regenerate the digest - not to revert.
+What it must not be is ignored. See `parity/README.md`, which also says what the reference does
+not cover.
+
+It cannot be extended. New reference data would need the Python implementation, which now means
+checking out a tag.
 
 ## Versioning
 
