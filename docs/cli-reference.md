@@ -341,7 +341,7 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 |---|---|
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
-| `--prism-csv <path>` | Skyline PRISM report |
+| `--prism-report <path>` | Skyline PRISM report, `.csv` or `.parquet`. `--prism-csv` is an accepted alias |
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
@@ -384,7 +384,7 @@ mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
 |---|---|
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
-| `--prism-csv <path>` | Skyline PRISM report (theoretical `Product Mz`). Recommended |
+| `--prism-report <path>` | Skyline PRISM report, `.csv` or `.parquet` (theoretical `Product Mz`). Recommended. `--prism-csv` is an accepted alias |
 | `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
