@@ -88,3 +88,10 @@ dmypy.json
 # Project-specific
 example-data/
 example-astral-data/
+# .NET
+dotnet/**/bin/
+dotnet/**/obj/
+*.user
+.mars-tmp/
+dotnet/**/TestResults/
+dotnet/TestResults/

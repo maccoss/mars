@@ -1,0 +1,148 @@
+// Copyright (c) University of Washington 2026. Licensed under the MIT License.
+// Compares two mzML files on DECODED array values.
+//
+// Equivalence is deliberately not defined on file bytes: .NET's zlib and Python's zlib
+// produce different compressed output at the same nominal level, and any writer may differ
+// in whitespace. What has to match is what a consumer actually reads back.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using MARS.Core;
+
+namespace MARS.IO;
+
+public sealed class MzMLComparison
+{
+    public long SpectraCompared { get; set; }
+
+    public long SpectraOnlyInA { get; set; }
+
+    public long SpectraOnlyInB { get; set; }
+
+    /// <summary>
+    /// True when the two files stopped holding the same spectra in the same order, so the
+    /// comparison ended early and the counts describe only what preceded it.
+    /// </summary>
+    public bool Diverged { get; set; }
+
+    public long MzValuesCompared { get; set; }
+
+    public long MzValuesDiffering { get; set; }
+
+    public long IntensityValuesDiffering { get; set; }
+
+    public double MaxAbsoluteMzDifference { get; set; }
+
+    public double MaxAbsoluteIntensityDifference { get; set; }
+
+    public List<string> Problems { get; } = new();
+
+    public bool MzBitIdentical => MzValuesDiffering == 0 && SpectraOnlyInA == 0 && SpectraOnlyInB == 0;
+
+    public bool IntensityBitIdentical => IntensityValuesDiffering == 0;
+}
+
+public static class MzMLComparer
+{
+    /// <summary>
+    /// Streams both files in parallel, pairing spectra by position and checking that the ids
+    /// agree, then compares decoded m/z and intensity arrays bit for bit.
+    /// </summary>
+    /// <remarks>
+    /// Positional, not a merge by id: this compares a file against a correction of itself, or
+    /// two corrections of one input, where the spectra are the same set in the same order. It
+    /// does not realign. One inserted or removed spectrum therefore puts everything after it
+    /// out of step, and the run says so and stops rather than reporting a tally that counts
+    /// every remaining pair as a difference - which would read as "these files are unrelated"
+    /// when the truth is "these files differ by one spectrum".
+    /// </remarks>
+    /// <param name="maxProblemsReported">Cap on the detail list; counters stay exact.</param>
+    public static MzMLComparison Compare(string pathA, string pathB, int maxProblemsReported = 20)
+    {
+        var result = new MzMLComparison();
+
+        MzMLFileInfo infoA = MzMLFile.Inspect(pathA);
+        MzMLFileInfo infoB = MzMLFile.Inspect(pathB);
+
+        using IEnumerator<SpectrumRecord> a = MzMLFile.ReadSpectra(infoA, msLevel: null).GetEnumerator();
+        using IEnumerator<SpectrumRecord> b = MzMLFile.ReadSpectra(infoB, msLevel: null).GetEnumerator();
+
+        while (true)
+        {
+            bool hasA = a.MoveNext();
+            bool hasB = b.MoveNext();
+
+            if (!hasA && !hasB) break;
+            if (!hasA)
+            {
+                result.SpectraOnlyInB++;
+                continue;
+            }
+
+            if (!hasB)
+            {
+                result.SpectraOnlyInA++;
+                continue;
+            }
+
+            SpectrumRecord left = a.Current;
+            SpectrumRecord right = b.Current;
+
+            if (!string.Equals(left.Id, right.Id, StringComparison.Ordinal))
+            {
+                // Everything after this point is compared against the wrong spectrum, so the
+                // counts would stop meaning anything. Report where alignment was lost and stop.
+                result.Problems.Add(
+                    $"spectrum id mismatch at position {result.SpectraCompared:N0}: '{left.Id}' " +
+                    $"vs '{right.Id}'. The files do not hold the same spectra in the same order, " +
+                    "so the comparison stops here; counts cover the spectra up to this point.");
+                result.Diverged = true;
+                result.SpectraOnlyInA++;
+                result.SpectraOnlyInB++;
+                break;
+            }
+
+            result.SpectraCompared++;
+
+            if (left.PeakCount != right.PeakCount)
+            {
+                if (result.Problems.Count < maxProblemsReported)
+                    result.Problems.Add($"{left.Id}: peak count {left.PeakCount} vs {right.PeakCount}");
+                continue;
+            }
+
+            ReadOnlySpan<double> mzA = left.Mz;
+            ReadOnlySpan<double> mzB = right.Mz;
+            ReadOnlySpan<double> intensityA = left.Intensity;
+            ReadOnlySpan<double> intensityB = right.Intensity;
+
+            for (int i = 0; i < left.PeakCount; i++)
+            {
+                result.MzValuesCompared++;
+
+                if (BitConverter.DoubleToInt64Bits(mzA[i]) != BitConverter.DoubleToInt64Bits(mzB[i]))
+                {
+                    result.MzValuesDiffering++;
+                    double difference = Math.Abs(mzA[i] - mzB[i]);
+                    if (difference > result.MaxAbsoluteMzDifference) result.MaxAbsoluteMzDifference = difference;
+                    if (result.Problems.Count < maxProblemsReported)
+                    {
+                        result.Problems.Add(
+                            $"{left.Id} peak {i}: m/z {mzA[i]:R} vs {mzB[i]:R}");
+                    }
+                }
+
+                if (BitConverter.DoubleToInt64Bits(intensityA[i]) != BitConverter.DoubleToInt64Bits(intensityB[i]))
+                {
+                    result.IntensityValuesDiffering++;
+                    double difference = Math.Abs(intensityA[i] - intensityB[i]);
+                    if (difference > result.MaxAbsoluteIntensityDifference)
+                        result.MaxAbsoluteIntensityDifference = difference;
+                }
+            }
+        }
+
+        return result;
+    }
+}

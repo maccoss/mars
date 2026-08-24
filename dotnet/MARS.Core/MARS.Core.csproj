@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>MARS.Core</RootNamespace>
+    <AssemblyName>MARS.Core</AssemblyName>
+    <Description>MARS calibration model, feature extraction and fragment matching.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.OspreyML\MARS.OspreyML.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MARS.Test" />
+  </ItemGroup>
+
+</Project>

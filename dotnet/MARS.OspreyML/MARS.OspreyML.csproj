@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Vendored copy of Osprey.ML's gradient boosted trees, from
+    pwiz_tools/Osprey/Osprey.ML in the ProteoWizard/pwiz repository.
+
+    Osprey.ML remains the sole OWNER of this code. Osprey.FDR needs it on net472, which
+    MARS cannot supply, and two independently maintained copies would drift silently in
+    exactly the code that decides splits. The copy here exists only because pwiz has no
+    package feed to consume yet; third_party/Osprey.ML/UPSTREAM.json records the commit it
+    came from and a SHA-256 of every vendored file, and MARS.Test fails when they stop
+    matching. Run scripts/sync-osprey-ml.ps1 against a pwiz checkout to re-sync.
+
+    Do not edit the vendored sources. Fix things upstream and re-sync.
+  -->
+  <PropertyGroup>
+    <RootNamespace>pwiz.Osprey.ML</RootNamespace>
+    <AssemblyName>MARS.OspreyML</AssemblyName>
+    <Description>Vendored Osprey.ML gradient boosted trees.</Description>
+    <!-- Upstream builds with nullable reference types off; keep it that way here so the
+         vendored sources stay byte-identical to their origin. -->
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\third_party\Osprey.ML\GradientBoostedTrees.cs" Link="GradientBoostedTrees.cs" />
+    <Compile Include="..\third_party\Osprey.ML\XorShift64.cs" Link="XorShift64.cs" />
+  </ItemGroup>
+
+</Project>

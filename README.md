@@ -1,293 +1,368 @@
 # MARS: Mass Accuracy Recalibration System
 
-[![PyPI version](https://img.shields.io/pypi/v/mars-ms.svg)](https://pypi.org/project/mars-ms/)
-[![Python versions](https://img.shields.io/pypi/pyversions/mars-ms.svg)](https://pypi.org/project/mars-ms/)
-[![License](https://img.shields.io/pypi/l/mars-ms.svg)](https://github.com/maccoss/mars/blob/main/LICENSE)
+[![Build](https://github.com/maccoss/mars/actions/workflows/dotnet.yml/badge.svg)](https://github.com/maccoss/mars/actions/workflows/dotnet.yml)
+[![Release](https://img.shields.io/github/v/release/maccoss/mars?display_name=tag&sort=semver&label=release)](https://github.com/maccoss/mars/releases/latest)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/download)
+[![License](https://img.shields.io/github/license/maccoss/mars)](https://github.com/maccoss/mars/blob/main/LICENSE)
 
-Mass recalibration tool for DIA mass spectrometry data from the ThermoFisher Stellar.
+Learns the systematic part of a mass spectrometer's m/z error from spectral library
+matches, and subtracts it from every peak in the file.
 
-## Overview
+Reads Thermo, Bruker and Sciex data directly as well as mzML, and writes mzML, mzXML, mzMLb or
+mgf - so a run can be calibrated straight off the instrument with no conversion step.
 
-Mars learns m/z calibration corrections from spectral library fragment matches. The XGBoost model accounts for:
+On Thermo Stellar ion-trap DIA data this cuts the median absolute fragment mass error
+roughly in half:
 
-- **Fragment m/z**: Mass-dependent calibration bias
-- **Peak intensity**: Higher intensity peaks provide more reliable calibration
-- **Absolute time**: Calibration drift over the acquisition run
-- **Spectrum TIC**: Space charge effects from high ion current
-- **Ion injection time**: Signal accumulation duration effects
-- **Precursor m/z**: DIA isolation window-specific effects
-- **RF temperatures**: Thermal effects from RF amplifier (RFA2) and electronics (RFC2)
+| Stellar HeLa GPF-DIA, 5 files | Uncorrected | Corrected |
+|---|---|---|
+| Median absolute deviation | 0.0800 Th | **0.0464 Th** |
+| Standard deviation | 0.1180 Th | **0.0872 Th** |
+| Median error | -0.0082 Th | **-0.0025 Th** |
 
-## How It Works
+Measured by rematching the library against the written output. On an already
+well-calibrated Astral run the same pipeline moves the spread by under 2% - there is
+little systematic error left to remove. **Run `mars qc` first** to see whether your data
+has anything worth correcting.
 
-1. **Fragment matching**: For each DIA MS2 spectrum, Mars finds library peptides where:
-   - The precursor m/z falls within the DIA isolation window
-   - The spectrum RT is within the peptide's elution window
+## About the Python implementation
 
-2. **Peak selection**: For each expected fragment, Mars selects the **most intense** peak within the m/z tolerance (not the closest), filtering for minimum intensity
+MARS began as a Python package (`mars-ms`, versions `0.1.x`). **The C# tool documented
+here is MARS going forward.** The Python implementation is frozen to bug fixes, is no
+longer published to PyPI, and will be archived once the C# one has been used in earnest.
+Its documentation is preserved in [README-python.md](README-python.md).
 
-3. **Model training**: Each matched fragment becomes a training point with up to 16 features (see [Model Features](#model-features)) and target: `delta_mz`
+The C# implementation is not a rewrite that hopes to behave the same. Fragment matching
+and every model feature were verified against the Python implementation row by row: across
+160,947 matched fragments from two Stellar runs, all 24 shared columns agree with a maximum
+absolute difference of **zero**. See [docs/python-parity.md](docs/python-parity.md).
 
-4. **Calibration**: The trained model predicts m/z corrections for all peaks in the mzML
+Where they deliberately differ, it is because the port found four defects in the Python
+implementation - including an invalid SHA-1 checksum on every mzML it has ever written.
+Those are listed in
+[docs/dotnet-port-spec.md](docs/dotnet-port-spec.md#10a-defects-found-in-the-python-implementation).
 
-## Installation
+Versions follow `YY.feature.patch` starting at `26.1.0`; the `0.1.x` line was the Python
+package. See [release-notes/README.md](release-notes/README.md).
 
-### From PyPI (recommended)
+---
+
+## Install
+
+### Option 1: download a build (no .NET needed)
+
+Grab an archive from the [Releases page](https://github.com/maccoss/mars/releases). Each is
+self-contained - unpack it and run; nothing else to install.
+
+| Platform | Archive |
+|---|---|
+| Windows x64 | `mars-{version}-win-x64.zip` |
+| Windows on Arm | `mars-{version}-win-arm64.zip` |
+| Linux x64 | `mars-{version}-linux-x64.tar.gz` |
+| Linux arm64 | `mars-{version}-linux-arm64.tar.gz` |
+| macOS Apple silicon | `mars-{version}-osx-arm64.tar.gz` |
+| macOS Intel | `mars-{version}-osx-x64.tar.gz` |
 
 ```bash
-pip install mars-ms
+tar xzf mars-26.1.0-linux-x64.tar.gz
+./mars --version
 ```
 
-### From source
+`SHA256SUMS.txt` is published alongside. On macOS, Gatekeeper will quarantine an
+unsigned download; clear it with `xattr -d com.apple.quarantine mars` or allow it once
+under System Settings > Privacy & Security.
+
+Builds of unreleased commits are available as workflow artifacts on any CI run, under the
+Actions tab.
+
+### Option 2: build a single binary yourself
+
+Build once (see [Build from source](#build-from-source)) and copy the resulting file
+anywhere; it carries its own runtime.
+
+```bash
+# from the dotnet/ directory, pick the target you want
+dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+    -r win-x64      --self-contained true -p:PublishSingleFile=true -o publish/win-x64
+dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+    -r linux-x64    --self-contained true -p:PublishSingleFile=true -o publish/linux-x64
+dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+    -r osx-arm64    --self-contained true -p:PublishSingleFile=true -o publish/osx-arm64
+```
+
+Produces a ~69 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
+`linux-arm64`, `osx-x64`.
+
+### Option 3: install the .NET runtime
+
+A framework-dependent build is about 2 MB but needs the **.NET 8 runtime** (or newer - MARS
+rolls forward). To *build* MARS you need the **.NET 8 SDK**, which includes the runtime.
+
+**Windows**
+
+```powershell
+winget install Microsoft.DotNet.SDK.8
+# runtime only:
+winget install Microsoft.DotNet.Runtime.8
+```
+
+Or download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/8.0).
+
+**Linux**
+
+```bash
+# Ubuntu 22.04+ / Debian 12+
+sudo apt update && sudo apt install -y dotnet-sdk-8.0
+
+# Fedora / RHEL
+sudo dnf install -y dotnet-sdk-8.0
+
+# any distro, no root required
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0
+export PATH="$HOME/.dotnet:$PATH"
+```
+
+**macOS**
+
+```bash
+brew install --cask dotnet-sdk
+```
+
+Or download the `.pkg` from
+[dot.net/download](https://dotnet.microsoft.com/download/dotnet/8.0). On Apple silicon
+take the **Arm64** build.
+
+Check it worked:
+
+```bash
+dotnet --list-sdks
+```
+
+## Build from source
 
 ```bash
 git clone https://github.com/maccoss/mars.git
-cd mars
-pip install -e .
+cd mars/dotnet
+dotnet build -c Release
+dotnet test
 ```
 
-**Requirements**: Python 3.10+, pyteomics, xgboost, numpy, pandas, matplotlib, seaborn, click
+The CLI lands at `MARS/bin/Release/net8.0/mars` (`mars.exe` on Windows). Add that
+directory to your `PATH`, or publish a single binary as above.
+
+**Dependencies are handled by `dotnet build`.** There is exactly one NuGet package,
+`Parquet.Net`, used to read DIA-NN libraries. It brings a small native compression library
+(`nironcompress`) that ships alongside the binary in every release archive - nothing has to
+be installed separately, but it does mean release artifacts are per-platform.
+
+`.blib` files are read through a managed SQLite reader written for this purpose rather than
+`Microsoft.Data.Sqlite`, so that path adds no native code. `MARS.Core` and `MARS.OspreyML`
+have no package references at all and are pure managed; only `MARS.IO` pulls in
+`Parquet.Net`.
+
+Targets `net8.0` by default, which runs unchanged on .NET 9 and 10. With a .NET 10 SDK
+installed you can build the full matrix:
+
+```bash
+dotnet build -c Release -p:MarsIncludeNet10=true
+```
+
+### Platform status
+
+CI builds and tests on Windows, Linux and macOS, and packages all six runtime
+identifiers on every push.
+
+| Platform | Status |
+|---|---|
+| Windows x64 | Build, tests and packaging in CI; full pipeline run on 6 GB of real data |
+| Linux x64 | Build, tests and packaging in CI; verified locally on real mzML |
+| macOS arm64 / x64 | Build, tests and packaging in CI. **Not yet run on real data** by a human. |
+| Windows on Arm | Cross-compiled and packaged; binary confirmed ARM64, **not** smoke tested - no hosted Windows Arm runner |
+| Linux arm64 | Cross-compiled and packaged, **not** smoke tested - no hosted arm64 Linux runner |
+
+Vendor reading and the non-mzML outputs are a separate axis, because they need a build made
+against pwiz-sharp. All six runtime identifiers publish and run with them; the gaps are that
+**Sciex is Windows-only**, because its SDK is, and **mzMLb is x64-only**, because the HDF5
+library it needs is published for x64 alone. Thermo and Bruker reading, and mzML and mzXML
+writing, work on every target. None of it is exercised in CI yet - pwiz-sharp has no package
+feed, so CI builds the mzML-only configuration.
+
+> **On Windows on Arm and macOS Intel**, `Parquet.Net`'s native compression library is not
+> published for the platform, so a DIA-NN library compressed with **LZ4 or LZO** cannot be
+> read there and fails with a clear "no compression codec" message. Snappy (parquet's usual
+> default, and what DIA-NN writes), Gzip, Brotli, Zstd and uncompressed all work, as do
+> Skyline PRISM reports and `.blib` libraries. Everything else in MARS is unaffected.
 
 ## Usage
 
-### With PRISM CSV (Recommended)
+The command is identical on all three platforms; only the path to the binary differs.
 
-Use a CSV file created using this [Skyline report](Skyline-PRISM-Report/Skyline-PRISM.skyr) for accurate RT windows:
+```bash
+# Linux / macOS
+./mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
+
+# Windows (PowerShell)
+.\mars.exe calibrate --mzml-dir runs\ --prism-csv report.csv --output-dir corrected\
+```
+
+### Before you correct anything
+
+```bash
+mars qc --mzml-dir runs/ --prism-csv report.csv
+```
+
+Reports the mass error already present, in both Th and ppm, without training or writing
+anything. If the error is already small, MARS has nothing to offer and you have learned
+that cheaply.
+
+### Correcting a set of runs
 
 ```bash
 mars calibrate \
-  --mzML data.mzML \
-  --prism-csv prism_report.csv \
-  --tolerance 0.3 \
-  --max-isolation-window 5.0 \
-  --output-dir output/
+    --mzml-dir runs/ \
+    --prism-csv skyline-report.csv \
+    --output-dir corrected/
 ```
 
-> **Note:** Both `--mzml` and `--mzML` are accepted.
+The inputs do not have to be mzML: a directory of Thermo `.raw`, or a Bruker `.d`, works the
+same way, and `--output-format mzXML|mzMLb|mgf` picks what comes out.
 
-### With DIA-NN Parquet Output
+Writes `{input}-mars.mzML` for each input, plus `mars_model.json`,
+`mars_qc_summary.txt` and `mars_qc_report.html`. All input files are fitted together as one
+cohort, which is what lets the model learn drift across a run sequence rather than only
+within a file.
 
-Use DIA-NN parquet files directly as a spectral library:
+`mars_qc_report.html` is the one to look at: the error distribution before and after, the
+error across retention time and m/z, feature importance, and a panel per feature. It is a
+single self-contained file with everything embedded, so it can be emailed as an attachment
+and read by someone who has neither the data nor the tool. See
+[docs/qc-report.md](docs/qc-report.md), or pass `--no-html-report` to skip it.
+
+For high-resolution data use a relative tolerance:
 
 ```bash
-mars calibrate \
-  --mzml data.mzML \
-  --library report-lib.parquet \
-  --output-dir output/
+mars calibrate --mzml-dir runs/ --prism-csv report.csv \
+    --tolerance-ppm 10 --output-dir corrected/
 ```
 
-Mars automatically looks for `report.parquet` in the same directory to get RT windows. If the report file is in a different location:
+### Reusing a model
 
 ```bash
-mars calibrate \
-  --mzml data.mzML \
-  --library report-lib.parquet \
-  --diann-report /path/to/report.parquet \
-  --output-dir output/
+mars apply --model corrected/mars_model.json --mzml-dir more-runs/ \
+    --output-dir corrected/ --validate
 ```
 
-### Basic Usage (blib)
+### Checking the file format is handled correctly
 
 ```bash
-mars calibrate --mzml data.mzML --library library.blib --output-dir output/
+mars verify runs/one.mzML
 ```
 
-### Batch Processing
+Round-trips the file applying a **null correction**, then checks the result decodes to
+bit-identical m/z and intensity arrays with a valid index and checksum. Run this first if
+a corrected file misbehaves downstream: it separates a file-format problem from a model
+problem, and those have very different fixes.
 
-```bash
-# Multiple files with wildcard (no quotes needed)
-mars calibrate --mzml *.mzML --library library.blib --output-dir output/
+### Input and output formats
 
-# Positional arguments also work (no --mzml flag needed)
-mars calibrate *.mzML --library library.blib --output-dir output/
+| Read | Vendor | Platforms |
+|---|---|---|
+| `.mzML` | - | everywhere, by MARS itself |
+| `.raw` | Thermo | Windows, Linux, macOS |
+| `.d`, `.tdf`, `.tsf`, `.baf` | Bruker | Windows, Linux |
+| `.wiff`, `.wiff2` | Sciex | Windows |
 
-# Specify files individually
-mars calibrate --mzml a.mzML --mzml b.mzML --library library.blib --output-dir output/
+| Write | Notes |
+|---|---|
+| `mzML` (default) | The input byte for byte, except the m/z arrays that changed |
+| `mzXML` | Cannot express ion mobility or some isolation-window terms |
+| `mzMLb` | mzML in HDF5; roughly half the size. x64 only |
+| `mgf` | MS2 peak lists only - no MS1, no chromatograms, no scan metadata |
 
-# All files in directory
-mars calibrate --mzml-dir /path/to/data/ --library library.blib --output-dir output/
-```
+Vendor formats and the non-mzML outputs come from
+[pwiz-sharp](https://github.com/ProteoWizard/pwiz/pull/4178), the .NET port of the ProteoWizard
+core. Released binaries carry the vendor SDKs, so a download opens a `.raw` with nothing else
+installed; `mars --version` reports what the binary in front of you actually has. A MARS built
+without pwiz reads and writes mzML exactly as before, and says so when asked for anything else
+- see [the CLI reference](docs/cli-reference.md#input-formats).
 
-### Applying a Pre-Trained Model
+Once pwiz-sharp merges upstream, MARS will stop shipping its own copies on Windows and use the
+SDKs an installed Skyline-daily, Skyline or msconvert already provides - in that order, and
+only after checking the version it finds. See
+[open-questions.md](docs/open-questions.md#where-the-vendor-sdks-come-from).
 
-If you've already trained a calibration model and want to apply it to new files without retraining:
+MARS reads the mass analyzer from the file and configures itself: 0.3 Th on a trap, 10 ppm on
+an orbitrap, TOF or Astral, with the QC report drawn in matching units. `--resolution` and
+`--tolerance` override it. On a timsTOF the ion mobility dimension is collapsed - each frame's
+mobility scans are combined into one spectrum per isolation window - because MARS models m/z
+error, not mobility.
 
-```bash
-# Apply existing model to new mzML files
-mars apply --mzml new_data.mzML --model mars_model.pkl --output-dir output/
+### Commands
 
-# Apply to multiple files (no quotes needed)
-mars apply --mzml *.mzML --model mars_model.pkl --output-dir output/
+| Command | Purpose |
+|---|---|
+| `calibrate` | Learn a correction from library matches and write recalibrated output |
+| `apply` | Apply an existing model to more files |
+| `qc` | Report mass accuracy without training or writing |
+| `verify` | Round-trip a file with a null correction and check it |
+| `compare` | Compare two mzML files on decoded values |
 
-# Or as positional arguments
-mars apply *.mzML --model mars_model.pkl --output-dir output/
+Every command takes `--help`. Diagnostics go to stderr so stdout stays pipeable. Exit
+codes: `0` success, `1` input error, `2` insufficient training data, `3` output validation
+failure.
 
-# Apply to all files in a directory
-mars apply --mzml-dir /path/to/data/ --model mars_model.pkl --output-dir output/
-```
+### Frequently used options
 
-This is useful when:
+| Option | Default | Meaning |
+|---|---|---|
+| `--mzml`, `--mzml-dir` | - | Input files, a glob, or a directory |
+| `--prism-csv` | - | Skyline PRISM report (recommended library source) |
+| `--library` | - | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
+| `--diann-report` | beside the library | DIA-NN `report.parquet`, for RT windows |
+| `--tolerance` | 0.3 Th | Matching tolerance; use `--tolerance-ppm` for Orbitrap/Astral |
+| `--min-intensity` | 500 | Minimum peak intensity usable as a training row |
+| `--max-isolation-window` | - | Leave wider isolation windows uncorrected |
+| `--temperature-dir` | - | RF temperature logs (`RFA2-*.csv`, `RFC2-*.csv`) |
+| `--threads` | `auto` | Worker threads; `auto` is one per logical processor, and the run reports which it used |
+| `--on-reorder` | `clamp` | What to do if a correction would unsort the m/z array |
 
-- You want to calibrate files from the same instrument/method without retraining
-- You trained on a subset of files and want to apply to the rest
-- You're reprocessing data with a validated model
+## Which library do I need?
 
-## Options
+One with **theoretical** fragment m/z. A [Skyline PRISM
+report](Skyline-PRISM-Report/Skyline-PRISM.skyr) is the best-supported source. A `.blib`
+without peak annotations cannot be used and MARS will say so rather than produce a bad
+model. See [docs/spectral-libraries.md](docs/spectral-libraries.md).
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--mzml` / `--mzML` | - | Path to mzML file(s) or glob pattern (repeatable) |
-| `--mzml-dir` | - | Directory containing mzML files |
-| `--library` | - | Path to spectral library: blib file or DIA-NN `report-lib.parquet` |
-| `--prism-csv` | - | PRISM Skyline CSV with Start/End Time columns |
-| `--diann-report` | - | Path to DIA-NN `report.parquet` (auto-detected if in same dir as library) |
-| `--tolerance` | 0.3 | m/z tolerance for matching (Th), ignored if `--tolerance-ppm` is set |
-| `--tolerance-ppm` | - | m/z tolerance for matching in ppm (e.g., 10 for Astral), overrides `--tolerance` |
-| `--min-intensity` | 500 | Minimum peak intensity for matching |
-| `--max-isolation-window` | - | Maximum isolation window width (m/z) to include |
-| `--temperature-dir` | - | Directory with RF temperature CSV files |
-| `--output-dir` | `.` | Output directory |
-| `--model-path` | - | Path to save/load calibration model |
-| `--no-recalibrate` | - | Only train model, don't write mzML |
+## A note on reproducibility
 
-## RT Window Behavior
+Identical input produces identical decoded m/z values, on any thread count and any
+platform. Compressed **file bytes** are not portable across platforms, because runtimes
+ship different zlib builds - the same input produced 1,176,380 bytes on Windows and
+1,176,172 on Linux with every decoded value identical. Compare files with `mars compare`,
+not `cmp`. See [docs/algorithm.md](docs/algorithm.md#determinism).
 
-- **With `--prism-csv`**: Uses exact `Start Time` and `End Time` from Skyline
-- **With DIA-NN parquet**: Uses `RT.Start` and `RT.Stop` from `report.parquet`
-- **With blib only**: Uses +/-5 seconds around the blib library RT
+**mzMLb is the exception**, and not because of anything MARS does: two mzMLb writes of identical
+data differ byte-wise, because the HDF5 container records things that vary between writes. The
+spectra are the same. Use mzML or mzXML where a checksum has to match.
 
-## Isolation Window Filtering
+## Documentation
 
-Some DIA methods use wide isolation windows (e.g., 20-30 m/z) that may reduce calibration accuracy. Use `--max-isolation-window` to exclude these:
+[docs/](docs/) is the full documentation. The pages most people want:
 
-```bash
-# Exclude windows wider than 5 m/z
-mars calibrate --mzml data.mzML --prism-csv report.csv --max-isolation-window 5.0
-```
-
-This filters spectra during both model training and mzML recalibration. Typical narrow DIA windows (~1 m/z) are retained.
-
-## Output Files
-
-| File | Description |
-|------|-------------|
-| `{input}-mars.mzML` | Recalibrated mzML file |
-| `mars_model.pkl` | Trained XGBoost calibration model |
-| `mars_qc_histogram.png` | Delta m/z distribution (before/after) |
-| `mars_qc_heatmap.png` | 2D heatmap (RT × m/z, color = delta) |
-| `mars_qc_intensity_vs_error.png` | Intensity vs mass error hexbin |
-| `mars_qc_rt_vs_error.png` | RT vs mass error hexbin |
-| `mars_qc_mz_vs_error.png` | Fragment m/z vs mass error hexbin |
-| `mars_qc_tic_vs_error.png` | TIC vs mass error hexbin |
-| `mars_qc_injection_time_vs_error.png` | Injection time vs mass error hexbin |
-| `mars_qc_tic_injection_time_vs_error.png` | TIC×injection time vs mass error hexbin |
-| `mars_qc_fragment_ions_vs_error.png` | Fragment ions vs mass error hexbin |
-| `mars_qc_rfa2_temperature_vs_error.png` | RFA2 temperature vs error (if available) |
-| `mars_qc_rfc2_temperature_vs_error.png` | RFC2 temperature vs error (if available) |
-| `mars_qc_feature_importance.png` | Model feature importance |
-| `mars_qc_summary.txt` | Calibration statistics |
-
-
-## Model Features
-
-The XGBoost model uses up to 16 features to predict m/z corrections:
-
-1. `precursor_mz` - DIA isolation window center
-2. `fragment_mz` - Fragment m/z being calibrated  
-3. `absolute_time` - Time relative to first acquisition (seconds)
-4. `log_tic` - Log10 of spectrum total ion current
-5. `log_intensity` - Log10 of peak intensity
-6. `injection_time` - Ion injection time (seconds)
-7. `tic_injection_time` - TIC × injection time product
-8. `fragment_ions` - Fragment intensity × injection time (total ions, not rate)
-9. `ions_above_0_1` - Total ions in (X+0.5, X+1.5] Th range above fragment m/z
-10. `ions_above_1_2` - Total ions in (X+1.5, X+2.5] Th range above fragment m/z
-11. `ions_above_2_3` - Total ions in (X+2.5, X+3.5] Th range above fragment m/z
-12. `ions_below_0_1` - Total ions in (X-1.5, X-0.5] Th range below fragment m/z
-13. `ions_below_1_2` - Total ions in (X-2.5, X-1.5] Th range below fragment m/z
-14. `ions_below_2_3` - Total ions in (X-3.5, X-2.5] Th range below fragment m/z
-15. `adjacent_ratio_0_1` - ions_above_0_1 / fragment_ions (relative adjacent density)
-16. `adjacent_ratio_1_2` - ions_above_1_2 / fragment_ions
-17. `adjacent_ratio_2_3` - ions_above_2_3 / fragment_ions
-18. `adjacent_ratio_below_0_1` - ions_below_0_1 / fragment_ions
-19. `adjacent_ratio_below_1_2` - ions_below_1_2 / fragment_ions
-20. `adjacent_ratio_below_2_3` - ions_below_2_3 / fragment_ions
-21. `rfa2_temp` - RF amplifier temperature (°C)
-22. `rfc2_temp` - RF electronics temperature (°C)
-
-**Note**: Features 6-20 are only included if injection time data is available in the mzML files. Features 21-22 are only included if temperature CSV files are provided. Features with universally missing data are automatically excluded.
-
-## RF Temperature Data
-
-Mars can incorporate RF temperature data to model thermal effects on mass accuracy. Temperature data is loaded from CSV files exported from Thermo chromatogram exports.
-
-### Temperature File Format
-
-Temperature CSV files should be in Thermo's chromatogram export format:
-- 3 header lines (skipped)
-- Columns: `Time(min)`, temperature value
-
-Example naming convention:
-```
-RFA2-Sample_Name.csv  # RF amplifier temperature
-RFC2-Sample_Name.csv  # RF electronics temperature  
-```
-
-### Usage with Temperature Data
-
-```bash
-mars calibrate \
-  --mzml data.mzML \
-  --prism-csv report.csv \
-  --temperature-dir /path/to/temperature_csvs/ \
-  --output-dir output/
-```
-
-Mars automatically finds temperature files matching each mzML filename and interpolates temperature values at each spectrum's retention time.
-
-## Python API
-
-```python
-from mars import load_blib, read_dia_spectra, match_library_to_spectra, MzCalibrator
-
-# Load library and match
-library = load_blib("library.blib")
-spectra = read_dia_spectra("data.mzML")
-matches = match_library_to_spectra(library, spectra, mz_tolerance=0.2, min_intensity=1500)
-
-# Train and save model
-calibrator = MzCalibrator()
-calibrator.fit(matches)
-calibrator.save("model.pkl")
-```
-
-### Using DIA-NN Parquet
-
-```python
-from mars import load_diann_library, read_dia_spectra, match_library_to_spectra, MzCalibrator
-
-# Load DIA-NN library (auto-finds report.parquet in same directory)
-library = load_diann_library("report-lib.parquet")
-
-# Or specify report.parquet explicitly
-library = load_diann_library("report-lib.parquet", report_parquet="/path/to/report.parquet")
-
-# Filter to specific mzML file(s)
-library = load_diann_library("report-lib.parquet", mzml_filename=["sample1.mzML", "sample2.mzML"])
-
-spectra = read_dia_spectra("data.mzML")
-matches = match_library_to_spectra(library, spectra, mz_tolerance=0.2, min_intensity=1500)
-```
-
-## Requirements
-
-- **Spectral library**: One of the following formats:
-  - blib format from Skyline with fragment annotations
-  - DIA-NN parquet output (`report-lib.parquet` + `report.parquet`)
-- **mzML files**: DIA data from Thermo Stellar (or similar unit resolution instrument)
-- **PRISM CSV** (optional): Skyline report with `Start Time`, `End Time`, `Replicate Name` columns
+| | |
+|---|---|
+| [docs/algorithm.md](docs/algorithm.md) | How the recalibration works: matching, features, model, correction |
+| [docs/cli-reference.md](docs/cli-reference.md) | Every command and option, and what the exit codes mean |
+| [docs/spectral-libraries.md](docs/spectral-libraries.md) | Library sources and choosing a tolerance |
+| [docs/qc-report.md](docs/qc-report.md) | How to read the QC figures |
+| [docs/model.md](docs/model.md) | The gradient boosted trees, in depth |
+| [docs/mzml-passthrough.md](docs/mzml-passthrough.md) | How output files are written |
+| [docs/architecture.md](docs/architecture.md) | A map of the code, for anyone modifying it |
+| [docs/python-parity.md](docs/python-parity.md) | How this is verified against the Python implementation |
+| [docs/dotnet-port-spec.md](docs/dotnet-port-spec.md) | Port specification, acceptance gates, measured results |
+| [dotnet/README.md](dotnet/README.md) | The C# source tree |
+| [release-notes/](release-notes/) | Per-version release notes and the release process |
 
 ## License
 
-MIT
-
+MIT. See [LICENSE](LICENSE).

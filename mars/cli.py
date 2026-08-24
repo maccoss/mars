@@ -12,6 +12,8 @@ from pathlib import Path
 
 import click
 
+from mars import __version__
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -73,7 +75,7 @@ def find_mzml_files(
 
 
 @click.group()
-@click.version_option(version="0.1.5", prog_name="mars")
+@click.version_option(version=__version__, prog_name="mars")
 def main():
     """Mars: Mass Accuracy Recalibration System for Thermo Stellar DIA data."""
     pass

@@ -1,0 +1,117 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MARS's bridge to pwiz-sharp, the .NET 8 port of the ProteoWizard core
+    (ProteoWizard/pwiz PR #4178). It buys output formats MARS has no writer for - mzXML and
+    mzMLb today - and puts the format code with the people who maintain the format.
+
+    The reference is OPTIONAL and points at an external checkout, because pwiz-sharp has no
+    package feed and is far too large to vendor the way third_party/Osprey.ML is. When the
+    checkout is absent this project still compiles: MARS_NO_PWIZ drops the backend and
+    PwizOutput reports itself unavailable, so a plain `dotnet build` with no pwiz anywhere
+    keeps working and MARS keeps writing mzML through its own byte-splice writer. That is the
+    same shape pwiz's own vendor projects use for their SDKs (NO_VENDOR_SUPPORT).
+
+    Point it somewhere else with:
+
+        dotnet build -p:PwizSharpDir=<path-to>/pwiz/pwiz-sharp
+  -->
+  <PropertyGroup>
+    <RootNamespace>MARS.Pwiz</RootNamespace>
+    <AssemblyName>MARS.Pwiz</AssemblyName>
+    <Description>Reads vendor formats and writes non-mzML formats, through pwiz-sharp.</Description>
+
+  </PropertyGroup>
+
+  <Import Project="..\Pwiz.props" />
+
+  <PropertyGroup Condition="'$(PwizAvailable)' != 'true'">
+    <DefineConstants>$(DefineConstants);MARS_NO_PWIZ</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PwizSciexAvailable)' == 'true'">
+    <DefineConstants>$(DefineConstants);MARS_SCIEX</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
+    <Compile Remove="MarsSpectrumList.cs" />
+    <Compile Remove="PwizWriteBackend.cs" />
+    <Compile Remove="PwizSpectrumSource.cs" />
+    <Compile Remove="VendorReaders.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PwizAvailable)' == 'true'">
+    <!--
+      MsData alone. It carries the mzML, mzXML and mzMLb writers, so the writer path needs
+      no vendor projects - which matters, because Analysis references the Waters reader and
+      that stages a native Windows-only MassLynxRaw.dll into the output. Reading vendor RAW
+      will need that chain; writing does not, and MARS ships four non-Windows artifacts.
+
+      The wrapper therefore derives from SpectrumListBase (MsData) rather than
+      SpectrumListWrapper (Analysis), which costs three delegating members.
+    -->
+<ProjectReference Include="$(PwizMsDataProject)" />
+
+    <!--
+      The Thermo reader, for reading .raw directly. This is the reference that costs
+      something: Thermo.csproj pulls Analysis, which pulls the Waters reader, which stages a
+      native Windows-only MassLynxRaw.dll into the output. Nothing in the Thermo path touches
+      Waters, so it looks vestigial upstream - worth raising there rather than working around
+      here. The Thermo SDK itself is managed and cross-platform.
+
+      Vendor SDKs are license-gated: without -p:IAgreeToVendorLicenses=true the archive is not
+      extracted and the reader compiles to something that recognizes a .raw but refuses to
+      read it. MARS treats that the same as pwiz being absent.
+    -->
+    <ProjectReference Include="$(PwizThermoProject)"
+                      Condition="Exists('$(PwizThermoProject)')" />
+
+    <!-- Bruker: BAF, TSF and TDF including PASEF. Windows and Linux, from separate archives. -->
+    <ProjectReference Include="$(PwizBrukerProject)"
+                      Condition="Exists('$(PwizBrukerProject)')" />
+
+    <!-- Sciex: .wiff through the legacy provider, .wiff2 through SCIEX.Apis.Data.v1. Windows
+         only - see Pwiz.props. -->
+    <ProjectReference Include="$(PwizSciexProject)"
+                      Condition="'$(PwizSciexAvailable)' == 'true'" />
+
+    <!--
+      Sciex .wiff2 is a runtime-only plugin. Built as a dependency but deliberately NOT
+      referenced: Wiff2LoadContext loads Pwiz.Vendor.Sciex.Wiff2.dll on demand into a
+      side-by-side AssemblyLoadContext, so that its bundled SCIEX.Apis.Data.v1 does not collide
+      with the signed Clearcore2 assemblies the legacy .wiff path uses in the default context.
+      Referencing it normally would put it in deps.json and defeat that.
+    -->
+    <ProjectReference Include="$(PwizSciexWiff2Project)" Condition="'$(PwizSciexAvailable)' == 'true'">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Content</OutputItemType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ProjectReference>
+
+    <ProjectReference Include="$(PwizSciexOfxStubProject)" Condition="'$(PwizSciexAvailable)' == 'true'">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Content</OutputItemType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MarsSpectrumList is internal, and its batching is the part most worth testing. -->
+    <InternalsVisibleTo Include="MARS.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
+    <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
+  </ItemGroup>
+
+  <Target Name="ReportPwizAvailability" BeforeTargets="Build">
+    <Message Condition="'$(PwizAvailable)' == 'true'"
+             Importance="normal"
+             Text="MARS.Pwiz: building against pwiz-sharp at $(PwizSharpDir)" />
+    <Message Condition="'$(PwizAvailable)' != 'true'"
+             Importance="normal"
+             Text="MARS.Pwiz: no pwiz-sharp at $(PwizSharpDir); mzML output only. Set -p:PwizSharpDir to enable mzXML and mzMLb." />
+  </Target>
+
+</Project>

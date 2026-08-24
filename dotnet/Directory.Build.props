@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    MARS builds against net8.0 by default because that is the newest SDK guaranteed
+    to be present on the lab build machines. The spec targets net10.0; when a .NET 10
+    SDK is installed, build the full matrix with:
+
+        dotnet build -p:MarsIncludeNet10=true
+
+    MARS.Core deliberately avoids net10-only APIs so this stays a one-property change.
+    A net8.0 assembly also executes unchanged on the .NET 9 and .NET 10 runtimes.
+  -->
+  <PropertyGroup>
+    <!-- Add net10.0 with -p:MarsIncludeNet10=true rather than by passing a semicolon-
+         separated list. A list cannot survive the command line: the shell eats the quotes,
+         and escaping the separator as %3B makes MSBuild treat the whole string as one
+         target framework ("The TargetFramework value 'net8.0;net10.0' is not valid").
+         MarsTargetFrameworks is still honoured for anything that sets it as a real MSBuild
+         property, where the separator is unambiguous. -->
+    <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == '' and '$(MarsIncludeNet10)' == 'true'">net8.0;net10.0</MarsTargetFrameworks>
+    <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == ''">net8.0</MarsTargetFrameworks>
+    <TargetFrameworks>$(MarsTargetFrameworks)</TargetFrameworks>
+    <!-- Pinned rather than 'latest' so the language version does not silently track
+         whichever SDK a developer happens to have installed. CI builds with the .NET 8
+         SDK, whose ceiling is C# 12; a developer on a newer SDK would otherwise be able
+         to use C# 13 or 14 syntax that compiles locally and fails in CI. Raising this
+         means raising the SDK floor in .github/workflows/dotnet.yml too. -->
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Company>University of Washington</Company>
+    <Product>MARS</Product>
+    <Copyright>Copyright (c) University of Washington 2026</Copyright>
+    <Version>26.1.0</Version>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

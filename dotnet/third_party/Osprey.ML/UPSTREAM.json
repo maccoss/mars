@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "Drift guard for the vendored Osprey.ML sources. MARS.Test hashes every file listed",
+    "here and fails when one no longer matches, which turns an accidental local edit into",
+    "a visible test failure rather than a silent fork. Run scripts/sync-osprey-ml.ps1",
+    "against a pwiz checkout to pull upstream changes and rewrite these hashes.",
+    "",
+    "Osprey.ML remains the owner of this code. Fix bugs upstream in pwiz, then re-sync."
+  ],
+  "repository": "https://github.com/ProteoWizard/pwiz",
+  "branch": "Skyline/work/20260819_osprey_gbt_regression",
+  "commit": "6efbc3ea5d8f7f2c426bedd14fcf92d83fd7a8a7",
+  "commitSubject": "Addressed code review feedback on PR #4595",
+  "pullRequest": "https://github.com/ProteoWizard/pwiz/issues/4592",
+  "syncedOn": "2026-08-20",
+  "files": [
+    {
+      "vendored": "GradientBoostedTrees.cs",
+      "upstream": "pwiz_tools/Osprey/Osprey.ML/GradientBoostedTrees.cs",
+      "verbatim": true,
+      "sha256": "9A9D12056BAA943E702F508F52209605E1A78439A8947DD5107669D0B23736A4"
+    },
+    {
+      "vendored": "XorShift64.cs",
+      "upstream": "pwiz_tools/Osprey/Osprey.ML/LinearSvmClassifier.cs",
+      "verbatim": false,
+      "extractedType": "XorShift64",
+      "note": "Fragment extracted from a file that also pulls in MathNet.Numerics and Osprey.Core. Guarded semantically by a golden output sequence in MARS.Test, not by an upstream file hash.",
+      "sha256": "926BFF088079EA149F14B725BDEDB28A80181ED87B07A3839240AEB729DD0B50"
+    }
+  ]
+}

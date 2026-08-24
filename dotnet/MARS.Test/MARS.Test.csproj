@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PwizAvailable, so the tests that need pwiz types can be excluded when there is no
+       checkout - the same shape MARS.Pwiz uses. -->
+  <Import Project="..\Pwiz.props" />
+
+  <ItemGroup Condition="'$(PwizAvailable)' != 'true'">
+    <Compile Remove="PwizSpectrumListTest.cs" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!--
+      The test host needs real cultures, so that CultureTest can put the library code under a
+      comma-decimal locale and check it still writes points. Under the invariant globalization
+      MARS sets elsewhere, new CultureInfo("de-DE") silently yields an invariant culture and
+      the test would pass without testing anything.
+
+      Set unconditionally, so the check runs in CI too - CI has no pwiz checkout, and that is
+      exactly the configuration where nobody would otherwise notice a locale bug.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <RootNamespace>MARS.Test</RootNamespace>
+    <AssemblyName>MARS.Test</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MARS.Core\MARS.Core.csproj" />
+    <ProjectReference Include="..\MARS.IO\MARS.IO.csproj" />
+    <ProjectReference Include="..\MARS\MARS.csproj" />
+  </ItemGroup>
+
+</Project>
