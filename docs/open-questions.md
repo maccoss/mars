@@ -153,8 +153,8 @@ would be removing the conversion and its ~5 GB intermediate, not the read itself
 **A Thermo-only build drags a native Windows DLL.** `Thermo.csproj` references
 `Analysis.csproj`, which references `Waters.csproj`, which stages `MassLynxRaw.dll` - a
 Windows x86-64 native PE - into the output. Nothing in the Thermo reader touches Waters, so
-this looks vestigial upstream, but MARS ships `linux-x64`, `linux-arm64`, `osx-arm64` and
-`osx-x64` and would be carrying it. The managed Thermo SDK itself is cross-platform; this is a
+this looks vestigial upstream, but MARS ships `linux-x64`, `linux-arm64` and `osx-arm64`
+and would be carrying it. The managed Thermo SDK itself is cross-platform; this is a
 project-reference shape, and worth raising upstream rather than working around.
 
 **It is not consumable as a package.** No `GeneratePackageOnBuild`, so there is no NuGet

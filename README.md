@@ -61,7 +61,6 @@ self-contained - unpack it and run; nothing else to install.
 | Linux x64 | `mars-{version}-linux-x64.tar.gz` |
 | Linux arm64 | `mars-{version}-linux-arm64.tar.gz` |
 | macOS Apple silicon | `mars-{version}-osx-arm64.tar.gz` |
-| macOS Intel | `mars-{version}-osx-x64.tar.gz` |
 
 ```bash
 tar xzf mars-26.1.0-linux-x64.tar.gz
@@ -91,7 +90,8 @@ dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
 ```
 
 Produces a ~69 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
-`linux-arm64`, `osx-x64`.
+`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`. An Intel Mac has to build from source:
+there is no `osx-x64` release, and an `osx-arm64` binary will not run there.
 
 ### Option 3: install the .NET runtime
 
@@ -169,7 +169,7 @@ dotnet build -c Release -p:MarsIncludeNet10=true
 
 ### Platform status
 
-CI builds and tests on Windows, Linux and macOS, and packages all six runtime
+CI builds and tests on Windows, Linux and macOS, and packages all five runtime
 identifiers on every push.
 
 | Platform | Status |
@@ -317,7 +317,7 @@ failure.
 |---|---|---|
 | `--mzml`, `--mzml-dir` | - | Input files, a glob, or a directory |
 | `--prism-csv` | - | Skyline PRISM report (recommended library source) |
-| `--library` | - | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
+| `--library` | - | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report` | beside the library | DIA-NN `report.parquet`, for RT windows |
 | `--tolerance` | 0.3 Th | Matching tolerance; use `--tolerance-ppm` for Orbitrap/Astral |
 | `--min-intensity` | 500 | Minimum peak intensity usable as a training row |

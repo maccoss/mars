@@ -510,8 +510,11 @@ public static class CalibrateCommand
             Input:
                   --mzml <path>          mzML file or glob (repeatable)
                   --mzml-dir <dir>       Directory of mzML files
-                  --prism-csv <path>     Skyline PRISM report CSV (theoretical Product Mz)
-                  --library <path>       .blib, DIA-NN report-lib.parquet, or PRISM .csv
+                  --prism-csv <path>     Skyline PRISM report (theoretical Product Mz).
+                                         The report Skyline exports for PRISM to read,
+                                         not anything PRISM writes
+                  --library <path>       .blib, DIA-NN report-lib.parquet, or a Skyline
+                                         PRISM report
                   --diann-report <path>  DIA-NN report.parquet, for per-run RT windows
                   --temperature-dir <d>  Directory of RFA2-/RFC2- temperature CSVs
 

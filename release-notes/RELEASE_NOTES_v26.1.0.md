@@ -58,11 +58,16 @@ Versions from here follow `YY.feature.patch`, so this is the first feature relea
   by row: across two Stellar runs, 160,947 matched fragments agree on all 24 shared columns
   with a maximum absolute difference of zero, including the space-charge features that
   carry the most weight in the model. See `docs/python-parity.md`.
-- **Prebuilt binaries for six platforms**, published to GitHub Releases and self-contained
-  so no .NET install is needed: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
-  `osx-arm64` and `osx-x64`, with `SHA256SUMS.txt`. Each is built and smoke tested on its
-  own platform where a hosted runner exists; `win-arm64` and `linux-arm64` are
-  cross-compiled because none is available.
+- **Prebuilt binaries for five platforms**, published to GitHub Releases and self-contained
+  so no .NET install is needed: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64` and
+  `osx-arm64`, with `SHA256SUMS.txt`. Each is built and smoke tested on its own platform
+  where a hosted runner exists; `win-arm64` and `linux-arm64` are cross-compiled because
+  none is available.
+
+  There is no Intel Mac build. Apple silicon has been the only Mac sold for years, and the
+  hosted Intel runner no longer schedules. An Intel Mac has to build from source, which the
+  README covers - an `osx-arm64` binary will not run there, since Rosetta translates x64 to
+  arm64 and not the reverse.
 
 - **Documentation.** `docs/` covers the algorithm, a full CLI reference, the model in
   depth, how to read the QC figures, the mzML passthrough contract, a map of the code, and

@@ -118,17 +118,17 @@ The mass analyzer is detected from the vendor file exactly as it is from an mzML
 
 ### Platforms
 
-All six release targets build and run with the vendor reader, because the Thermo SDK MARS uses
+All five release targets build and run with the vendor reader, because the Thermo SDK MARS uses
 is managed and cross-platform.
 
 | Target | Reads `.raw` | mzML, mzXML | mzMLb |
 |---|---|---|---|
-| `win-x64`, `linux-x64`, `osx-x64` | yes | yes | yes |
+| `win-x64`, `linux-x64` | yes | yes | yes |
 | `win-arm64`, `linux-arm64`, `osx-arm64` | yes | yes | **no** |
 
 mzMLb is the one gap: it is HDF5, and `HDF.PInvoke.1.10` bundles a native libhdf5 for x64 only,
 so an arm64 build has nothing to write it with. Everything else - reading vendor files
-included - works on all six.
+included - works on all five.
 
 A build also stages two files it never uses on non-Windows targets: `MassLynxRaw.dll`, which is
 a Windows native library, and a Waters `license.key`. Both arrive through the same transitive
@@ -342,7 +342,7 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
 | `--prism-csv <path>` | Skyline PRISM report |
-| `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
+| `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
 | `--resolution <mode>` | `unit`, `hram` or `auto` (default `auto`) |
@@ -384,8 +384,8 @@ mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
 |---|---|
 | `--mzml <path>` | mzML file or glob. Repeatable |
 | `--mzml-dir <dir>` | Directory of mzML files |
-| `--prism-csv <path>` | Skyline PRISM report CSV (theoretical `Product Mz`). Recommended |
-| `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
+| `--prism-csv <path>` | Skyline PRISM report (theoretical `Product Mz`). Recommended |
+| `--library <path>` | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report <path>` | DIA-NN `report.parquet`, for per-run RT windows |
 | `--temperature-dir <dir>` | Directory of `RFA2-`/`RFC2-` temperature CSVs |
 
