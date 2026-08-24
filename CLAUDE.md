@@ -21,8 +21,8 @@ The repository uses GitHub Actions for CI/CD, defined in `.github/workflows/`.
 1.  **.NET (`dotnet.yml`)** - the one that matters. Triggers on pushes and pull requests
     touching `dotnet/`.
     *   Builds and tests on ubuntu, windows and macos with `-warnaserror`.
-    *   Packages all six self-contained artifacts (`win-x64`, `win-arm64`, `linux-x64`,
-        `linux-arm64`, `osx-arm64`, `osx-x64`) on every run, so packaging breaks surface
+    *   Packages all five self-contained artifacts (`win-x64`, `win-arm64`, `linux-x64`,
+        `linux-arm64`, `osx-arm64`) on every run, so packaging breaks surface
         here rather than at tag time.
     *   Builds and tests against `net10.0` as well, reported rather than gated. Pass
         `-p:MarsIncludeNet10=true`, never a semicolon-separated framework list - the shell
@@ -32,7 +32,7 @@ The repository uses GitHub Actions for CI/CD, defined in `.github/workflows/`.
 
 2.  **.NET release (`dotnet-release.yml`)** - triggers on a `v*` tag. Preflights that the
     tag, `<Version>` and the release notes agree before building anything, then publishes
-    the six artifacts and the GitHub Release. Also runs manually to build artifacts without
+    the five artifacts and the GitHub Release. Also runs manually to build artifacts without
     releasing.
 
 3.  **Tests (`tests.yml`)** - the frozen Python package's pytest and ruff run, scoped to

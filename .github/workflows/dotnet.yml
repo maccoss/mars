@@ -159,7 +159,6 @@ jobs:
           - { os: windows-latest, rid: win-x64,     archive: zip }
           - { os: ubuntu-latest,  rid: linux-x64,   archive: tar }
           - { os: macos-latest,   rid: osx-arm64,   archive: tar }
-          - { os: macos-13,       rid: osx-x64,     archive: tar }
           # No hosted arm64 runner in the standard pool for either of these, so they are
           # cross-compiled and NOT smoke tested. GitHub's windows-11-arm runner can be
           # swapped in for win-arm64 if it becomes available to this repository.

@@ -126,5 +126,5 @@ gh release edit v{version} --notes-file release-notes/RELEASE_NOTES_v{version}.m
 ### Building artifacts without releasing
 
 `dotnet-release.yml` also accepts a manual `workflow_dispatch` with a version, which
-builds all six platform artifacts and creates no Release. Useful for checking that
+builds all five platform artifacts and creates no Release. Useful for checking that
 packaging works before committing to a tag.

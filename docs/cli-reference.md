@@ -118,17 +118,17 @@ The mass analyzer is detected from the vendor file exactly as it is from an mzML
 
 ### Platforms
 
-All six release targets build and run with the vendor reader, because the Thermo SDK MARS uses
+All five release targets build and run with the vendor reader, because the Thermo SDK MARS uses
 is managed and cross-platform.
 
 | Target | Reads `.raw` | mzML, mzXML | mzMLb |
 |---|---|---|---|
-| `win-x64`, `linux-x64`, `osx-x64` | yes | yes | yes |
+| `win-x64`, `linux-x64` | yes | yes | yes |
 | `win-arm64`, `linux-arm64`, `osx-arm64` | yes | yes | **no** |
 
 mzMLb is the one gap: it is HDF5, and `HDF.PInvoke.1.10` bundles a native libhdf5 for x64 only,
 so an arm64 build has nothing to write it with. Everything else - reading vendor files
-included - works on all six.
+included - works on all five.
 
 A build also stages two files it never uses on non-Windows targets: `MassLynxRaw.dll`, which is
 a Windows native library, and a Waters `license.key`. Both arrive through the same transitive
