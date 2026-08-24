@@ -37,7 +37,7 @@ ruff check mars/ && pytest tests/ -v
 cd /home/maccoss/GitHub-Repo/maccoss/mars
 mars calibrate \
   --mzml "example-data/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_*.mzML" \
-  --prism-csv example-data/Stellar-HeLa-GPF-PRISM.csv \
+  --prism-report example-data/Stellar-HeLa-GPF-PRISM.csv \
   --tolerance 0.3 \
   --min-intensity 500 \
   --output-dir example-data/output/

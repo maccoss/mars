@@ -199,16 +199,16 @@ The command is identical on all three platforms; only the path to the binary dif
 
 ```bash
 # Linux / macOS
-./mars calibrate --mzml-dir runs/ --prism-csv report.csv --output-dir corrected/
+./mars calibrate --mzml-dir runs/ --prism-report report.csv --output-dir corrected/
 
 # Windows (PowerShell)
-.\mars.exe calibrate --mzml-dir runs\ --prism-csv report.csv --output-dir corrected\
+.\mars.exe calibrate --mzml-dir runs\ --prism-report report.csv --output-dir corrected\
 ```
 
 ### Before you correct anything
 
 ```bash
-mars qc --mzml-dir runs/ --prism-csv report.csv
+mars qc --mzml-dir runs/ --prism-report report.csv
 ```
 
 Reports the mass error already present, in both Th and ppm, without training or writing
@@ -220,7 +220,7 @@ that cheaply.
 ```bash
 mars calibrate \
     --mzml-dir runs/ \
-    --prism-csv skyline-report.csv \
+    --prism-report skyline-report.csv \
     --output-dir corrected/
 ```
 
@@ -241,7 +241,7 @@ and read by someone who has neither the data nor the tool. See
 For high-resolution data use a relative tolerance:
 
 ```bash
-mars calibrate --mzml-dir runs/ --prism-csv report.csv \
+mars calibrate --mzml-dir runs/ --prism-report report.csv \
     --tolerance-ppm 10 --output-dir corrected/
 ```
 

@@ -102,22 +102,25 @@ inside the window.
 > real DIA-NN output. Treat the first run against a real DIA-NN result as a check of the
 > reader as much as of the data.
 
-### Compression codecs on Arm Windows and Intel macOS
+### Compression codecs on Arm Windows
 
 `Parquet.Net` delegates some codecs to a native library that is only published for
-`win-x64`, `linux-x64`, `linux-arm64` and `osx-arm64`. On the other two platforms MARS
-ships for - **Windows on Arm and Intel macOS** - that library is absent, and parquet falls
-back to managed implementations for most codecs:
+`win-x64`, `linux-x64`, `linux-arm64` and `osx-arm64`. On the remaining platform MARS ships
+for - **Windows on Arm** - that library is absent, and parquet falls back to managed
+implementations for most codecs:
 
 | Codec | Without the native library |
 |---|---|
 | uncompressed, Snappy, Gzip, Brotli, Zstd | works |
 | LZ4, LZO | fails: "No compression codec for LZ4 is available on this platform" |
 
-Snappy is parquet's usual default and what DIA-NN writes, so this is unlikely to bite. If
-it does, the message names the codec, and the fix is to read the library on another
-platform or re-export it with Snappy. Nothing else in MARS is affected: PRISM CSV, `.blib`
-and every part of mzML processing are pure managed.
+Snappy is parquet's usual default, and what both DIA-NN and Skyline write, so this is
+unlikely to bite. If it does, the message names the codec, and the fix is to read the file on
+another platform or re-export it with Snappy.
+
+This applies to **any** parquet MARS reads, which since 26.2 includes a Skyline PRISM report
+exported as parquet, not only a DIA-NN library. Nothing else is affected: the PRISM CSV path,
+`.blib` and every part of mzML processing are pure managed.
 
 ## BiblioSpec (.blib)
 
