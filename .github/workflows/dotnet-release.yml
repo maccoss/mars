@@ -87,10 +87,18 @@ jobs:
           - { os: windows-latest, rid: win-x64,     archive: zip }
           - { os: ubuntu-latest,  rid: linux-x64,   archive: tar }
           - { os: macos-latest,   rid: osx-arm64,   archive: tar }
-          - { os: macos-13,       rid: osx-x64,     archive: tar }
-          # No hosted arm64 runner in the standard pool for either of these, so they are
-          # cross-compiled and NOT smoke tested. GitHub's windows-11-arm runner can be
-          # swapped in for win-arm64 if it becomes available to this repository.
+          # No runner in the standard pool for these, so they are cross-compiled and NOT
+          # smoke tested. GitHub's windows-11-arm runner can be swapped in for win-arm64 if it
+          # becomes available to this repository.
+          #
+          # osx-x64 moved here from macos-13, which no longer schedules: three release runs
+          # queued it for 3 h, 1 h 38 and 53 min without it ever starting, while every other
+          # job finished in minutes. Since the release job needs all six artifacts, one
+          # unschedulable runner means no release at all. Built on the arm64 macOS runner
+          # instead, which is the same toolchain and the same SDK targeting a different
+          # architecture. Swap it back to a hosted Intel runner if one returns, and the smoke
+          # test comes back with it.
+          - { os: macos-latest,   rid: osx-x64,     archive: tar, cross: true }
           - { os: windows-latest, rid: win-arm64,   archive: zip, cross: true }
           - { os: ubuntu-latest,  rid: linux-arm64, archive: tar, cross: true }
 
