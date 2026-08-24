@@ -34,7 +34,7 @@
     <Company>University of Washington</Company>
     <Product>MARS</Product>
     <Copyright>Copyright (c) University of Washington 2026</Copyright>
-    <Version>26.1.0</Version>
+    <Version>26.2.0</Version>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
