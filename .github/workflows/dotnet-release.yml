@@ -111,7 +111,15 @@ jobs:
       - name: Provide a 7-Zip that runs on macOS
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
+          # The runner image ships taps we do not use, and brew warns about every untrusted
+          # one it finds on any invocation - noise from the image rather than from anything
+          # here. Dropped rather than answered with HOMEBREW_NO_REQUIRE_TAP_TRUST, which
+          # would switch the check off for what we do install. sevenzip is homebrew/core.
+          brew untap aws/tap 2>/dev/null || true
+
           brew install sevenzip
           echo "SEVEN_ZIP=$(command -v 7zz)" >> "$GITHUB_ENV"
           "$(command -v 7zz)" | head -2
