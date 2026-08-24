@@ -1,0 +1,262 @@
+{
+  "columns": [
+    {
+      "finite": 14432,
+      "max": 109562.0,
+      "mean": 50182.516491130824,
+      "min": 11147.0,
+      "name": "scan_number",
+      "sha256": "76220af36f16f46e1702265fd20655dab01e9da579d6b1aaa8f71d4004bf8394"
+    },
+    {
+      "finite": 14432,
+      "max": 22.953444228433,
+      "mean": 10.510325782438988,
+      "min": 2.32414068135,
+      "name": "retention_time",
+      "sha256": "95bdee3200d6ddcf811b2d4f4fc9a363996e499cdbf0ba4dc95befecc9772ee2"
+    },
+    {
+      "finite": 14432,
+      "max": 301.0,
+      "mean": 149.69179600886918,
+      "min": 0.0,
+      "name": "entry_index",
+      "sha256": "4be7d7c4f6ff1c28d8729dd2c0752fa84b50b761678d07515c92b876046131c9"
+    },
+    {
+      "finite": 14432,
+      "max": 1509.0,
+      "mean": 750.4844789356985,
+      "min": 0.0,
+      "name": "fragment_index",
+      "sha256": "caacbe2ddf257e5dee24646ee99e9216cf22754416ba655737eeacde6d031681"
+    },
+    {
+      "finite": 14432,
+      "max": 292.0,
+      "mean": 142.63677937915742,
+      "min": 0.0,
+      "name": "peptide_group",
+      "sha256": "95da04cd7aee39b9e0e2779008d7654d9dd6856cff56e25e02dd38f0ccb5a98b"
+    },
+    {
+      "finite": 0,
+      "max": null,
+      "mean": null,
+      "min": null,
+      "name": "peptide",
+      "sha256": "71c71be2462e0fdf841f4a69fe5b72182c08cc70b4258e1fc30b7e098c75671c"
+    },
+    {
+      "finite": 0,
+      "max": null,
+      "mean": null,
+      "min": null,
+      "name": "ion_annotation",
+      "sha256": "cce4787f1cec9f4626423bbad8aea52a750cc8f20d421ff60da8240fd807a5aa"
+    },
+    {
+      "finite": 14432,
+      "max": 1146.699354,
+      "mean": 602.804453766828,
+      "min": 201.086983,
+      "name": "expected_mz",
+      "sha256": "7fa63a62f0dc0428e59a09a0110b644f0b8fd8826d87c2964cc6505a9f39af4c"
+    },
+    {
+      "finite": 14432,
+      "max": 1146.9710693359375,
+      "mean": 602.7653529998204,
+      "min": 200.9520263671875,
+      "name": "observed_mz",
+      "sha256": "b0a0e702f4fed47a2d41e7a2a8da7f13a11b2dd5dcb022f2ac4920bcc0fb6994"
+    },
+    {
+      "finite": 14432,
+      "max": 0.29972922656247647,
+      "mean": -0.039100767017169434,
+      "min": -0.29994510156245724,
+      "name": "delta_mz",
+      "sha256": "0a8e8a5accbdffcdd1d8a59f2a33ed34b93cacd5857119402705a98c6e380ce9"
+    },
+    {
+      "finite": 14432,
+      "max": 5294978.0,
+      "mean": 19280.633889809415,
+      "min": 500.1529846191406,
+      "name": "observed_intensity",
+      "sha256": "1452c1d67f3eecc290ce595810de15035d1ae87d948f64393147c56507887a2f"
+    },
+    {
+      "finite": 14432,
+      "max": 499.977203369141,
+      "mean": 469.6636164637733,
+      "min": 404.933990478516,
+      "name": "precursor_mz",
+      "sha256": "276ea828edba9f5b45796111d06a97064ad5263b8d00c4791ba9003e34c8f1eb"
+    },
+    {
+      "finite": 14432,
+      "max": 1146.699354,
+      "mean": 602.804453766828,
+      "min": 201.086983,
+      "name": "fragment_mz",
+      "sha256": "7fa63a62f0dc0428e59a09a0110b644f0b8fd8826d87c2964cc6505a9f39af4c"
+    },
+    {
+      "finite": 14432,
+      "max": 7.562337966456558,
+      "mean": 5.94310489078055,
+      "min": 4.550346615322323,
+      "name": "log_tic",
+      "sha256": "c596f7ec677e958bcaa544a5f52964fec6520fd5da92c899bacc9d87c5b7b721"
+    },
+    {
+      "finite": 14432,
+      "max": 6.723864160005647,
+      "mean": 3.6363606448368473,
+      "min": 2.699102864763271,
+      "name": "log_intensity",
+      "sha256": "4ec99ee38fcfc92d5b4d04ce54aae88f902b671260a4a211930d14d8ea68c7b3"
+    },
+    {
+      "finite": 14432,
+      "max": 1237.7582128047943,
+      "mean": 491.1711061578368,
+      "min": 0.0,
+      "name": "absolute_time",
+      "sha256": "c80174219c6600386c3499255b3388139f2e020895ecb3a62c37df5a10dafaaa"
+    },
+    {
+      "finite": 14432,
+      "max": 0.010672768592834,
+      "mean": 0.009932774499463589,
+      "min": 0.00020247258245899999,
+      "name": "injection_time",
+      "sha256": "27eeb9d89ee259c99ca7a6c186c04ac633ed49f565ceed603fc596adb17b3c2f"
+    },
+    {
+      "finite": 14432,
+      "max": 105416.4879260631,
+      "mean": 10473.488594607761,
+      "min": 378.98647239769247,
+      "name": "tic_injection_time",
+      "sha256": "17f296b0f0e1c6a5b34b03917f60ee192555d56e8c29092ad7ea784759de70e5"
+    },
+    {
+      "finite": 14432,
+      "max": 11430.864690059843,
+      "mean": 121.38946111512045,
+      "min": 0.6130737813998371,
+      "name": "fragment_ions",
+      "sha256": "b5a385f9642d4961f975091e84151e9d8c75ba7b5b0b7d964d81e3e92bb95a43"
+    },
+    {
+      "finite": 14432,
+      "max": 1886.166875391802,
+      "mean": 31.10133695331337,
+      "min": 0.0,
+      "name": "ions_above_0_1",
+      "sha256": "c2e65d7109576aab2a35715d8802347c870ac77667920a0434b6952d3035c2a4"
+    },
+    {
+      "finite": 14432,
+      "max": 7171.002110936846,
+      "mean": 15.141252078362164,
+      "min": 0.0,
+      "name": "ions_above_1_2",
+      "sha256": "0da5f63f4677ca99059825634a70b4e476cd3fc248ae7396b925267cad3a5986"
+    },
+    {
+      "finite": 14432,
+      "max": 1181.101185896933,
+      "mean": 11.535881454532797,
+      "min": 0.0,
+      "name": "ions_above_2_3",
+      "sha256": "2484993d68db9ca1a2b67a7c9d6011abb8471d13596f60da855f6cf181429e30"
+    },
+    {
+      "finite": 14432,
+      "max": 1553.1576511883345,
+      "mean": 11.736318478955,
+      "min": 0.0,
+      "name": "ions_below_0_1",
+      "sha256": "3fda04aad8c0de9a9c051c3cb2a948fa9c9f5a8b4a0008c1835cb783f57b1a3f"
+    },
+    {
+      "finite": 14432,
+      "max": 1905.383362005209,
+      "mean": 13.2049359776409,
+      "min": 0.0,
+      "name": "ions_below_1_2",
+      "sha256": "9dff84db1b942f04204a9eee03828b00d8d835c21817bc000c68536642b18234"
+    },
+    {
+      "finite": 14432,
+      "max": 1596.859660933515,
+      "mean": 13.161736054909078,
+      "min": 0.0,
+      "name": "ions_below_2_3",
+      "sha256": "d9a8a4a7f64389f17b3db92f6b1aef6a52fe0021ed632137551a1c66873a0df7"
+    },
+    {
+      "finite": 14432,
+      "max": 62.22740708927443,
+      "mean": 0.583033789371236,
+      "min": 0.0,
+      "name": "adjacent_ratio_0_1",
+      "sha256": "074b7c4aca99b3ef2675900d9aa22db88f27c6acce6aa7542a27d04129e03656"
+    },
+    {
+      "finite": 14432,
+      "max": 72.49681580603706,
+      "mean": 0.4522357279771099,
+      "min": 0.0,
+      "name": "adjacent_ratio_1_2",
+      "sha256": "93a78a7a163c5b13f255ab46b8863ab833f0f357e71463f55f61dad8db68e5f4"
+    },
+    {
+      "finite": 14432,
+      "max": 100.45872986569336,
+      "mean": 0.4306678966307208,
+      "min": 0.0,
+      "name": "adjacent_ratio_2_3",
+      "sha256": "8cffcc43c4f9e9cffc8c6f0cdbdaf85af336f9a091d3d9d80aecdfa467ac1f25"
+    },
+    {
+      "finite": 14432,
+      "max": 23.571898839960603,
+      "mean": 0.36366069251466715,
+      "min": 0.0,
+      "name": "adjacent_ratio_below_0_1",
+      "sha256": "adce25f9e2e6ec9cd1520166f69cb91dcc677082f6e6cacf99000cdb128a04ea"
+    },
+    {
+      "finite": 14432,
+      "max": 56.56120147724693,
+      "mean": 0.46149124763659005,
+      "min": 0.0,
+      "name": "adjacent_ratio_below_1_2",
+      "sha256": "30cacef40393db0068d40cbb0f239a0aa9956b0160daf3c618b1fd9f6ae50b41"
+    },
+    {
+      "finite": 14432,
+      "max": 100.75068459342275,
+      "mean": 0.5319614634826667,
+      "min": 0.0,
+      "name": "adjacent_ratio_below_2_3",
+      "sha256": "7e5179d8a0607658a5a76971c963c9878d7d22a5eeeb23717cdee62a584163e0"
+    }
+  ],
+  "provenance": {
+    "library": "example-data/Stellar-HeLa-GPF-PRISM.csv",
+    "mars_commit": "f475478",
+    "mars_version": "26.1.0",
+    "mzml": "Ste-2024-12-02_HeLa_20msIIT_GPFDIA_400-500_14.mzML",
+    "options": "--tolerance 0.3 --min-intensity 500 --no-dedupe-library --no-recalibrate",
+    "verified_against": "Python mars 0.1.5, 14432 rows, compare_matches.py max abs diff 0.000e+00 on every shared column",
+    "verified_on": "2026-08-24"
+  },
+  "rows": 14432
+}
