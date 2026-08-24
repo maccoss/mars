@@ -160,15 +160,15 @@ public static class DiannParquetLibraryReader
         {
             using ParquetRowGroupReader groupReader = reader.OpenRowGroupReader(group);
 
-            string[] precursorId = ReadStrings(groupReader, fields, PrecursorIdColumn);
-            string[] modifiedSequence = ReadStrings(groupReader, fields, ModifiedSequenceColumn);
-            double[] precursorCharge = ReadDoubles(groupReader, fields, PrecursorChargeColumn);
-            double[] precursorMz = ReadDoubles(groupReader, fields, PrecursorMzColumn);
-            double[] productMz = ReadDoubles(groupReader, fields, ProductMzColumn);
-            double[] relativeIntensity = ReadDoubles(groupReader, fields, RelativeIntensityColumn);
-            string[] fragmentType = ReadStrings(groupReader, fields, FragmentTypeColumn);
-            double[] fragmentCharge = ReadDoubles(groupReader, fields, FragmentChargeColumn);
-            double[] seriesNumber = ReadDoubles(groupReader, fields, FragmentSeriesNumberColumn);
+            string[] precursorId = ParquetColumns.ReadStrings(groupReader, ParquetColumns.Require(fields, PrecursorIdColumn));
+            string[] modifiedSequence = ParquetColumns.ReadStrings(groupReader, ParquetColumns.Require(fields, ModifiedSequenceColumn));
+            double[] precursorCharge = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, PrecursorChargeColumn));
+            double[] precursorMz = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, PrecursorMzColumn));
+            double[] productMz = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, ProductMzColumn));
+            double[] relativeIntensity = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, RelativeIntensityColumn));
+            string[] fragmentType = ParquetColumns.ReadStrings(groupReader, ParquetColumns.Require(fields, FragmentTypeColumn));
+            double[] fragmentCharge = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, FragmentChargeColumn));
+            double[] seriesNumber = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, FragmentSeriesNumberColumn));
 
             int rows = precursorId.Length;
             for (var i = 0; i < rows; i++)
@@ -204,10 +204,10 @@ public static class DiannParquetLibraryReader
         {
             using ParquetRowGroupReader groupReader = reader.OpenRowGroupReader(group);
 
-            string[] precursorId = ReadStrings(groupReader, fields, PrecursorIdColumn);
-            string[] run = ReadStrings(groupReader, fields, RunColumn);
-            double[] start = ReadDoubles(groupReader, fields, RtStartColumn);
-            double[] stop = ReadDoubles(groupReader, fields, RtStopColumn);
+            string[] precursorId = ParquetColumns.ReadStrings(groupReader, ParquetColumns.Require(fields, PrecursorIdColumn));
+            string[] run = ParquetColumns.ReadStrings(groupReader, ParquetColumns.Require(fields, RunColumn));
+            double[] start = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, RtStartColumn));
+            double[] stop = ParquetColumns.ReadDoubles(groupReader, ParquetColumns.Require(fields, RtStopColumn));
 
             for (var i = 0; i < precursorId.Length; i++)
             {
@@ -253,52 +253,5 @@ public static class DiannParquetLibraryReader
 
         throw new InvalidDataException(
             $"Missing required columns in {Path.GetFileName(path)}: {string.Join(", ", missing)}");
-    }
-
-    private static DataField Field(DataField[] fields, string name) =>
-        fields.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.Ordinal))
-        ?? throw new InvalidDataException($"Column '{name}' is missing.");
-
-    private static string[] ReadStrings(ParquetRowGroupReader reader, DataField[] fields, string name)
-    {
-        DataColumn column = reader.ReadColumnAsync(Field(fields, name)).GetAwaiter().GetResult();
-        Array data = column.Data;
-        var result = new string[data.Length];
-        for (var i = 0; i < data.Length; i++) result[i] = data.GetValue(i)?.ToString() ?? string.Empty;
-        return result;
-    }
-
-    /// <summary>
-    /// Reads a numeric column regardless of the physical type DIA-NN chose for it. Column
-    /// types drift between DIA-NN versions, so binding to one would break on upgrade.
-    /// </summary>
-    private static double[] ReadDoubles(ParquetRowGroupReader reader, DataField[] fields, string name)
-    {
-        DataColumn column = reader.ReadColumnAsync(Field(fields, name)).GetAwaiter().GetResult();
-        Array data = column.Data;
-        var result = new double[data.Length];
-
-        for (var i = 0; i < data.Length; i++)
-        {
-            object? value = data.GetValue(i);
-            result[i] = value switch
-            {
-                null => double.NaN,
-                double d => d,
-                float f => f,
-                int n => n,
-                long l => l,
-                short s => s,
-                byte b => b,
-                decimal m => (double)m,
-                string text => double.TryParse(text, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double parsed)
-                    ? parsed
-                    : double.NaN,
-                _ => double.NaN,
-            };
-        }
-
-        return result;
     }
 }

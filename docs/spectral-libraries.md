@@ -118,8 +118,8 @@ Snappy is parquet's usual default, and what both DIA-NN and Skyline write, so th
 unlikely to bite. If it does, the message names the codec, and the fix is to read the file on
 another platform or re-export it with Snappy.
 
-This applies to **any** parquet MARS reads, which since 26.2 includes a Skyline PRISM report
-exported as parquet, not only a DIA-NN library. Nothing else is affected: the PRISM CSV path,
+This applies to **any** parquet MARS reads, which includes a Skyline PRISM report exported as
+parquet, not only a DIA-NN library. Nothing else is affected: the PRISM CSV path,
 `.blib` and every part of mzML processing are pure managed.
 
 ## BiblioSpec (.blib)

@@ -185,8 +185,8 @@ files are not byte-identical across platforms even though every decoded value is
 there is not one. `MARS.IO` has `Parquet.Net`, which brings `IronCompress` and a native
 compression library - the only native code in the tree.
 
-It is confined to the parquet paths - a DIA-NN library, and since 26.2 a Skyline PRISM report
-exported as parquet - and it does not fail closed: without the native library, Snappy (what
+It is confined to the parquet paths - a DIA-NN library, or a Skyline PRISM report exported as
+parquet - and it does not fail closed: without the native library, Snappy (what
 both DIA-NN and Skyline write), Gzip, Brotli, Zstd and uncompressed all still work through
 managed fallbacks, and only LZ4 and LZO fail, with a message naming the codec. That matters on
 the one shipped platform `IronCompress` publishes no native for: **Windows on Arm**.
