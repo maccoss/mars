@@ -7,17 +7,21 @@ description: How to build, test and run the mars project
 MARS is the C# implementation under `dotnet/`. The Python implementation it was ported from was
 removed after `v26.1.0`; the pytest and ruff steps that used to be here went with it.
 
+Every command below runs from the repository root. They used to begin
+`cd /home/maccoss/GitHub-Repo/maccoss/mars`, which is not where the repository is on any machine
+but one - not even the one it was written on, where it sits on `D:`.
+
 ## Running Tests
 // turbo
 ```bash
-cd /home/maccoss/GitHub-Repo/maccoss/mars/dotnet
+cd dotnet
 dotnet test -c Release
 ```
 
 ## Building
 // turbo
 ```bash
-cd /home/maccoss/GitHub-Repo/maccoss/mars/dotnet
+cd dotnet
 dotnet build -c Release -warnaserror
 ```
 
@@ -27,7 +31,7 @@ Needs a full pwiz-sharp working tree at the commit pinned in `dotnet/pwiz-sharp.
 it MARS reads and writes mzML and nothing else, which is what CI builds by default.
 
 ```bash
-cd /home/maccoss/GitHub-Repo/maccoss/mars/dotnet
+cd dotnet
 dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendorLicenses=true
 ```
 
@@ -37,7 +41,6 @@ dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendor
 Python implementation. Use the built binary, or `dotnet run --project dotnet/MARS/MARS.csproj --`.
 
 ```bash
-cd /home/maccoss/GitHub-Repo/maccoss/mars
 ./dotnet/MARS/bin/Release/net8.0/mars calibrate \
   --mzml "example-data/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_*.mzML" \
   --prism-report example-data/Stellar-HeLa-GPF-PRISM.csv \
