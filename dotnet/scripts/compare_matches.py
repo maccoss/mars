@@ -1,10 +1,11 @@
 """Difference two match dumps row by row and column by column.
 
 Takes the CSV written by ``mars calibrate --dump-matches`` and one written by the Python
-implementation. ``dump_python_matches.py`` produced the latter and was removed with that
-implementation; a Python-side dump now comes from a ``v26.1.0`` checkout, or from the
-``mars-parity-python-reference-26.1.0.tar.gz`` asset on the v26.1.0 release, joins them on the rows they both found, and reports where the two
-implementations disagree.
+implementation, joins them on the rows they both found, and reports where the two disagree.
+
+The Python side used to come from ``dump_python_matches.py``, which was removed along with the
+implementation it drove. It now comes from a ``v26.1.0`` checkout, or from the
+``mars-parity-python-reference-26.1.0.tar.gz`` asset on the v26.1.0 release.
 
     python compare_matches.py --csharp cs.csv --python py.csv
 
