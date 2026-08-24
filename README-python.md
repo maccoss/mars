@@ -1,5 +1,18 @@
 # MARS: the Python implementation
 
+> **This describes the Python implementation, which is no longer in this repository.**
+>
+> It was removed after `v26.1.0`. MARS is the C# tool - see [README.md](README.md). The Python
+> code, its tests and the parity harness that drove it are at
+> [`v26.1.0`](https://github.com/maccoss/mars/releases/tag/v26.1.0) and every earlier tag:
+>
+> ```bash
+> git checkout v26.1.0
+> ```
+>
+> This page is kept so that the Python tool's behaviour stays documented for anyone reading
+> results it produced. It is history, not instructions.
+
 > [!NOTE]
 > **This documents the frozen Python implementation.** MARS is now the C# tool; see the
 > [main README](README.md). The Python package is bug-fix only, is no longer published to

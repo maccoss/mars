@@ -1,9 +1,18 @@
 # Checking the C# implementation against the Python one
 
-The Python implementation is the reference. It has been used on real data for long enough
+The Python implementation is the reference. It had been used on real data for long enough
 that "the C# version computes the same thing" is a stronger statement about correctness
 than any test written from first principles, because a test can only check what its author
 already believed.
+
+> **The Python implementation was removed after `v26.1.0`.** It is not lost - that tag and
+> every earlier one carry it, along with the harness described here - but nothing on `main`
+> can run it, so the comparison below cannot be re-taken here.
+>
+> It was taken before the code went, over the five-file Stellar cohort, and frozen: 352,349
+> matched fragments, every shared column agreeing to a maximum absolute difference of
+> **0.000e+00**. What is kept is a digest per file in [`parity/`](../parity/README.md),
+> which is what to check a matcher change against now.
 
 This page describes how that comparison is made and what it does and does not cover.
 
@@ -32,6 +41,11 @@ So the comparison has to be per row and per feature.
 
 ## Running it
 
+This is how it was run while both implementations were present. Repeating it needs a
+checkout of `v26.1.0` or earlier, where `dump_python_matches.py` and the `mars` package
+live. To check a change against the frozen result instead - which is what you want day to
+day - see [`parity/README.md`](../parity/README.md).
+
 Both sides write the same CSV schema: one row per matched fragment, identified by the scan
 and the library fragment, carrying every feature the model will see.
 
@@ -40,7 +54,7 @@ and the library fragment, carrying every feature the model will see.
 mars calibrate --mzml run.mzML --prism-report report.csv \
     --no-dedupe-library --no-recalibrate --dump-matches cs.csv --output-dir out/
 
-# Python
+# Python, from a v26.1.0 checkout
 python dotnet/scripts/dump_python_matches.py \
     --mzml run.mzML --prism-csv report.csv --out py.csv
 

@@ -1,11 +1,22 @@
 # MARS .NET 10 Port Specification
 
-**Status:** Draft
-**Target repo:** `mars` (this repo, alongside the existing Python)
+**Status:** Complete. The port shipped as `v26.1.0`, and the Python implementation was removed
+after it.
+**Target repo:** `mars` (this repo)
 **Author:** M. MacCoss
-**Last updated:** 2026-08-19
+**Last updated:** 2026-08-24
 
 ---
+
+> This document is kept as the record of how the port was specified and verified, so the
+> reasoning behind the C# implementation is not lost with the code it was ported from. It
+> refers throughout to Python source - `mars/matching.py`, `mars/calibration.py` and the rest -
+> which is no longer in this repository. That source is at `v26.1.0` and every earlier tag.
+>
+> Section 3's "during the transition" and the acceptance gates in section 12 describe a state
+> that has been and gone. They are left as written rather than rewritten in the past tense,
+> because a spec edited to match its outcome stops being evidence of what was actually required
+> beforehand.
 
 ## 0. How to use this document
 

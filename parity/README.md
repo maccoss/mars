@@ -4,9 +4,9 @@ MARS is a port of a Python implementation, and every feature the model sees was 
 against it row by row. That verification is what [the parity doc](../docs/python-parity.md)
 describes, and it depended on being able to run both implementations.
 
-The Python implementation is being removed from this repository. It is not gone - `v26.1.0` and
-every earlier tag carry it, and the harness that drove it - but it will not be on `main`, so
-its output cannot be regenerated here. What is kept instead is enough to answer the question
+The Python implementation has been removed from this repository. It is not gone - `v26.1.0` and
+every earlier tag carry it, and the harness that drove it - but it is not on `main`, so its
+output cannot be regenerated here. What is kept instead is enough to answer the question
 the harness existed to answer: **does the matcher still produce what it produced when it was
 verified?**
 
