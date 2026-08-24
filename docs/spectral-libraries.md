@@ -12,9 +12,15 @@ Four sources are supported, and they differ in how well they satisfy that requir
 | Skyline PRISM report | `--prism-csv` | Theoretical | Recommended. Carries per-replicate RT windows. |
 | DIA-NN library | `--library report-lib.parquet` | Theoretical | Needs `report.parquet` for RT windows. |
 | BiblioSpec `.blib` | `--library lib.blib` | Recomputed from sequence | Requires peak annotations. |
-| PRISM CSV as `--library` | `--library report.csv` | Theoretical | Same reader as `--prism-csv`. |
+| PRISM report as `--library` | `--library report.csv` | Theoretical | Same reader as `--prism-csv`. |
 
 ## Skyline PRISM report (recommended)
+
+**This is the report Skyline exports, not anything PRISM produces.** The name is easy to read
+the wrong way round: [PRISM](https://github.com/maccoss/skyline-prism) consumes a
+transition-level Skyline report and writes normalised peptide and protein quantities, and it is
+the *input* to that - the same file, exported with the same template - that MARS wants. PRISM's
+own output has no fragment m/z in it and is no use here.
 
 A Skyline transition report exported with the
 [PRISM report template](../Skyline-PRISM-Report/Skyline-PRISM.skyr). `Product Mz` is

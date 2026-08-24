@@ -60,7 +60,7 @@ public sealed class LibrarySource
 
         if (PrismCsv is not null)
         {
-            log($"Loading PRISM library: {PrismCsv}");
+            log($"Loading Skyline PRISM report: {PrismCsv}");
             return PrismCsvLibraryReader.Load(PrismCsv, options, log);
         }
 
@@ -69,7 +69,7 @@ public sealed class LibrarySource
 
         if (LibraryPath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
         {
-            log($"Loading PRISM library: {LibraryPath}");
+            log($"Loading Skyline PRISM report: {LibraryPath}");
             return PrismCsvLibraryReader.Load(LibraryPath, options, log);
         }
 

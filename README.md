@@ -317,7 +317,7 @@ failure.
 |---|---|---|
 | `--mzml`, `--mzml-dir` | - | Input files, a glob, or a directory |
 | `--prism-csv` | - | Skyline PRISM report (recommended library source) |
-| `--library` | - | `.blib`, DIA-NN `report-lib.parquet`, or a PRISM `.csv` |
+| `--library` | - | `.blib`, DIA-NN `report-lib.parquet`, or a Skyline PRISM report |
 | `--diann-report` | beside the library | DIA-NN `report.parquet`, for RT windows |
 | `--tolerance` | 0.3 Th | Matching tolerance; use `--tolerance-ppm` for Orbitrap/Astral |
 | `--min-intensity` | 500 | Minimum peak intensity usable as a training row |
