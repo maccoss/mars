@@ -23,10 +23,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -57,10 +57,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -76,7 +76,7 @@ jobs:
       # The tree is several gigabytes: without this every run would pay for it again.
       - name: Cache the pwiz checkout
         id: pwiz-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: pwiz
           key: pwiz-sharp-${{ steps.pin.outputs.commit }}
@@ -106,7 +106,15 @@ jobs:
         working-directory: dotnet
         shell: bash
         run: |
-          dotnet build -c Release -warnaserror             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
+          # MARS compiles pwiz-sharp from source, and pwiz's own CS1591/CA1859/IL3000
+          # warnings otherwise fill the log with hundreds of annotations about third-party
+          # code nobody here will act on. Demoted to messages rather than suppressed with
+          # NoWarn: as a global property NoWarn would discard the
+          # <NoWarn>$(NoWarn);MSB3277;CS1701</NoWarn> that pwiz projects set for themselves,
+          # and pwiz builds with TreatWarningsAsErrors, so those would become build errors.
+          # This names three codes and leaves every other warning visible - and -v quiet does
+          # not do it, which is worth recording because it looks like it should.
+          dotnet build -c Release -warnaserror "-warnAsMessage:CS1591;CA1859;IL3000"             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
 
       - name: Test with vendor support
         working-directory: dotnet
@@ -120,7 +128,7 @@ jobs:
         working-directory: dotnet
         shell: bash
         run: |
-          dotnet publish MARS/MARS.csproj -c Release -f net8.0 -r win-x64             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
+          dotnet publish MARS/MARS.csproj -c Release -f net8.0 -r win-x64 "-warnAsMessage:CS1591;CA1859;IL3000"             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
 
           cd "$GITHUB_WORKSPACE/vendor-build"
           capabilities=$(./mars.exe --version)
@@ -159,10 +167,10 @@ jobs:
           - { os: ubuntu-latest,  rid: linux-arm64, archive: tar, cross: true }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -199,7 +207,7 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path * -DestinationPath "$env:GITHUB_WORKSPACE/mars-${{ matrix.rid }}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mars-${{ matrix.rid }}
           path: |
@@ -217,10 +225,10 @@ jobs:
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: |
             8.0.x
@@ -245,10 +253,10 @@ jobs:
     name: Determinism
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -267,10 +275,10 @@ jobs:
     name: Vendored Osprey.ML drift guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
