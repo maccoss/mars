@@ -18,11 +18,11 @@ The version lives in exactly one place, `dotnet/Directory.Build.props` (`<Versio
 is updated only at release time, not during development. `mars --version` reads it back
 out of the assembly, so there is nothing to keep in lockstep.
 
-> **The `0.1.x` line was the Python package.** MARS is now the C# tool, and its first
-> release is `26.1.0`. The jump is deliberate: it is a switch of versioning scheme, not a
-> hundred-and-some feature releases. The Python package is frozen to bug fixes, is no
-> longer published to PyPI, and will be archived once the C# implementation has been used
-> in earnest. Its notes (`RELEASE_NOTES_v0.1.*.md`) stay here as history.
+> **The `0.1.x` line was the Python package.** MARS is the C# tool, and its first release is
+> `26.1.0`. The jump is deliberate: it is a switch of versioning scheme, not a
+> hundred-and-some feature releases. The Python package was never published beyond `0.1.4`,
+> and the implementation itself was removed from `main` after `26.1.0` - it is at that tag and
+> every earlier one. Its notes (`RELEASE_NOTES_v0.1.*.md`) stay here as history.
 
 ## File Format
 

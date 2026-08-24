@@ -6,7 +6,7 @@
 |---|---|
 | [algorithm.md](algorithm.md) | The recalibration algorithm end to end: fragment matching, the 22 features, training, and how the correction is applied. |
 | [cli-reference.md](cli-reference.md) | Every command and option, and what the exit codes mean. |
-| [spectral-libraries.md](spectral-libraries.md) | The four library sources, what makes a usable one, and how to choose a tolerance. |
+| [spectral-libraries.md](spectral-libraries.md) | The four library sources - including the Skyline PRISM report as CSV or parquet - what makes a usable one, and how to choose a tolerance. |
 | [qc-report.md](qc-report.md) | How to read the QC figures, and what a small correction actually means. |
 
 ## In depth
@@ -21,8 +21,8 @@
 
 | Document | What it covers |
 |---|---|
-| [python-parity.md](python-parity.md) | How the C# implementation is checked against the Python one row by row, what agrees, and what parity cannot cover. |
-| [dotnet-port-spec.md](dotnet-port-spec.md) | The specification governing the port: decisions, acceptance gates, measured results, and four defects the port found in the Python implementation. |
+| [python-parity.md](python-parity.md) | How the C# implementation was checked against the Python one row by row, what agreed, and what parity cannot cover. The Python implementation was removed after `v26.1.0`; the result is frozen in [`parity/`](../parity/README.md). |
+| [dotnet-port-spec.md](dotnet-port-spec.md) | The specification that governed the port: decisions, acceptance gates, measured results, and four defects the port found in the Python implementation. Kept as the record; the Python source it refers to is at `v26.1.0`. |
 | [open-questions.md](open-questions.md) | What was deliberately left undone, what was measured, and what would settle it. |
 
 ---
@@ -56,8 +56,10 @@ because runtimes ship different zlib builds - use `mars compare`, not `cmp`. See
 [model.md](model.md#determinism).
 
 **Does it give the same answer as the Python version?**
-Fragment matching and every model feature are bit-identical: 160,947 fragments across two
-Stellar runs, 24 columns, maximum absolute difference zero. The models are different
+Fragment matching and every model feature are bit-identical: 352,349 fragments across the
+five-file Stellar cohort, every shared column at maximum absolute difference zero, checked
+immediately before the Python implementation was removed and frozen in
+[`parity/`](../parity/README.md). The models are different
 implementations, agree to r = 0.9955, and leave the same amount of error behind. Four
 Python defects are deliberately not reproduced. See [python-parity.md](python-parity.md)
 and [model.md](model.md#how-close-is-this-to-xgboost).

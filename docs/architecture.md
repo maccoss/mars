@@ -12,7 +12,7 @@ dotnet/
   MARS.IO/         mzML reading and writing, library readers, the SQLite reader
   MARS.Pwiz/       vendor formats in, non-mzML formats out, through pwiz-sharp. Optional
   MARS.OspreyML/   compiles the vendored Osprey.ML sources
-  MARS.Test/       194 tests, 182 of them without a pwiz checkout
+  MARS.Test/       251 tests, 236 of them without a pwiz checkout
   third_party/
     Osprey.ML/     verbatim copies of the boosting code, hash-guarded
 ```
@@ -197,12 +197,14 @@ than it was, now that the PRISM path - the recommended one - can also be parquet
 
 ## Testing
 
-194 tests. The parts with the strongest evidence are not the ones with the most tests:
+251 tests. The parts with the strongest evidence are not the ones with the most tests:
 
-- **Fragment matching and every model feature** are verified against the Python
-  implementation row by row - 160,947 fragments, 24 columns, maximum absolute difference
-  zero. See [parity](python-parity.md). This is stronger evidence than unit tests with
-  invented expected values.
+- **Fragment matching and every model feature** were verified against the Python
+  implementation row by row, re-taken over the full five-file reference cohort immediately
+  before that implementation was removed: 352,349 fragments, every shared column at maximum
+  absolute difference zero. Frozen as a digest per file in [`parity/`](../parity/README.md),
+  which is what a matcher change is checked against now. See [parity](python-parity.md) for how
+  it was made. This is stronger evidence than unit tests with invented expected values.
 - **mzML passthrough** is covered by round-trip tests and by `mars verify` on real files.
 - **The vendored boosting code** is hash-guarded against upstream and bit-identity-checked.
 
