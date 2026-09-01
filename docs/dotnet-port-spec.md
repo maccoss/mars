@@ -80,6 +80,8 @@ specify from the outside, and they are also where a port most reliably goes wron
 | Target framework | `net10.0` | **Revised twice.** See below. |
 | Model implementation | Reuse `Osprey.ML.GradientBoostedTrees` | Already implements the XGBoost regularized objective (histogram split finding, Newton boosting, L1 + L2 leaf penalties, gamma, min_child_weight, subsampling) and is already deterministic by construction. |
 | Model ownership | `Osprey.ML` remains the sole owner | `Osprey.FDR` needs it on net472, which MARS at net10 cannot supply. Two copies would drift silently in the split-finding code. |
+| mzML strategy | Passthrough | Byte-preserving modification of the existing file. Established in the Python implementation after psims and lxml-rewrite approaches produced files that broke DIA-NN and SeeMS. |
+| Python removal | After acceptance gates pass | Not before. |
 
 ### Revision: target framework
 
@@ -91,7 +93,9 @@ undid the first.
 `net8.0` assembly executes unchanged on the .NET 9 and .NET 10 runtimes, so nothing was
 given up at run time; it removed the forward-reference problem recorded under "Recorded
 risk" below, since a net8 pwiz can reference a net8 MARS; and it did not require every
-build machine to carry a .NET 10 SDK before MARS would compile at all.
+build machine to carry a .NET 10 SDK before MARS would compile at all. It was written to be
+cheap to undo - nothing in `MARS.Core` used a net10-only API, so raising the floor was meant
+to be a one-property change. It was.
 
 **Second revision - net10.0, single target.** pwiz-sharp retargeted from .NET 8 to
 .NET 10 in [ProteoWizard/pwiz PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619)
@@ -106,8 +110,6 @@ What this costs is the SDK floor the first revision was protecting: building MAR
 needs a .NET 10 SDK, 10.0.100 or newer, which is what pwiz's own `global.json` asks for.
 Nothing is given up at deployment - release artifacts are self-contained, and a
 framework-dependent build rolls forward.
-| mzML strategy | Passthrough | Byte-preserving modification of the existing file. Established in the Python implementation after psims and lxml-rewrite approaches produced files that broke DIA-NN and SeeMS. |
-| Python removal | After acceptance gates pass | Not before. |
 
 ### Recorded risk
 
