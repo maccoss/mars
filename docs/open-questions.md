@@ -111,9 +111,12 @@ were retired. It has been: the Python implementation was removed after `v26.1.0`
 
 ## Reading vendor RAW directly, via pwiz-sharp
 
-**Measured, decision pending.** [ProteoWizard PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178)
-ports the ProteoWizard core to .NET 8, including the Thermo `.raw` reader and the mzML
-writer. If MARS used it, the workflow would go from `RAW -> msconvert -> mzML -> MARS` to
+**Measured, decision pending.** [ProteoWizard PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619)
+ports the ProteoWizard core to .NET 10, including the Thermo `.raw` reader and the mzML
+writer. It continues PR #4178, which opened the same work from the `chambem2/pwiz-sharp`
+branch while the port was still net8.0.
+
+If MARS used it, the workflow would go from `RAW -> msconvert -> mzML -> MARS` to
 `RAW -> MARS`.
 
 ### What was tried
@@ -275,7 +278,7 @@ matcher operating on spectra too sparse to compute most of the others from.
 assemblies, so a download opens a `.raw` with nothing else installed. That is what pwiz and
 Skyline already do, and it is the only option that makes "download MARS, calibrate a run" true.
 
-**Planned to change once [PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178) merges to
+**Planned to change once [PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619) merges to
 master.** When Skyline and msconvert ship pwiz-sharp themselves, MARS should stop carrying its
 own copies and use the installed ones - the user has already accepted the vendor licences by
 installing either.
@@ -309,13 +312,13 @@ than at the first `MissingMethodException`.
 
 Tried, and it fails for a version reason rather than a licensing one. Skyline is installed on
 the development machine and does ship `ThermoFisher.CommonCore.RawFileReader.dll` - at
-**5.0.0.93, targeting .NET Framework 4.7.1**. pwiz-sharp needs **8.0.6.0**: a `net8.0` process
+**5.0.0.93, targeting .NET Framework 4.7.1**. pwiz-sharp needs **8.0.6.0**: a .NET 10 process
 cannot load the former, and pwiz-sharp calls `RawFileReaderAdapter.ThreadedFileFactory` and the
 three-argument `Scan.FromFile`, which only the newer SDK has. The C++ ProteoWizard install
 carries the same 5.0.0.93. There is no NuGet package.
 
 So the precondition is not "Skyline is installed" but "Skyline ships pwiz-sharp's assemblies",
-which is what #4178 merging brings.
+which is what #4619 merging brings.
 
 ### What the switch will need
 
@@ -415,7 +418,7 @@ if (n.Contains("ZENOTOF7600", StringComparison.Ordinal)) return SciexInstrumentM
 
 An 8600 case, and a `SciexInstrumentModel` member mapping to `MS_time_of_flight` the way
 `ZenoTOF7600` does. Worth raising on
-[PR #4178](https://github.com/ProteoWizard/pwiz/pull/4178), because every tool reading 8600
+[PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619), because every tool reading 8600
 data through pwiz-sharp inherits this, not only MARS.
 
 ### What MARS does about it meanwhile

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    MARS's bridge to pwiz-sharp, the .NET 8 port of the ProteoWizard core
-    (ProteoWizard/pwiz PR #4178). It buys output formats MARS has no writer for - mzXML and
+    MARS's bridge to pwiz-sharp, the .NET 10 port of the ProteoWizard core
+    (ProteoWizard/pwiz PR #4619). It buys output formats MARS has no writer for - mzXML and
     mzMLb today - and puts the format code with the people who maintain the format.
 
     The reference is OPTIONAL and points at an external checkout, because pwiz-sharp has no

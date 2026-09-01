@@ -77,39 +77,51 @@ specify from the outside, and they are also where a port most reliably goes wron
 | Decision | Value | Rationale |
 |---|---|---|
 | Language | C# | ProteoWizard and msconvert are being ported to managed C#. Rust or C++ would strand MARS on the wrong side of that boundary. |
-| Target framework | `net8.0`, opting into `net10.0` | **Revised.** See below. |
+| Target framework | `net10.0` | **Revised twice.** See below. |
 | Model implementation | Reuse `Osprey.ML.GradientBoostedTrees` | Already implements the XGBoost regularized objective (histogram split finding, Newton boosting, L1 + L2 leaf penalties, gamma, min_child_weight, subsampling) and is already deterministic by construction. |
 | Model ownership | `Osprey.ML` remains the sole owner | `Osprey.FDR` needs it on net472, which MARS at net10 cannot supply. Two copies would drift silently in the split-finding code. |
 
 ### Revision: target framework
 
-`Directory.Build.props` builds `net8.0` by default and takes the full matrix from a
-single property:
+**As built: `net10.0`, single target.** This settled in two steps, and the second one
+undid the first.
 
-```
-dotnet build -p:MarsTargetFrameworks="net8.0;net10.0"
-```
+**First revision - net8.0 by default, net10.0 opt-in.** `Directory.Build.props` built
+`net8.0` and took the full matrix from `-p:MarsIncludeNet10=true`. Three reasons: a
+`net8.0` assembly executes unchanged on the .NET 9 and .NET 10 runtimes, so nothing was
+given up at run time; it removed the forward-reference problem recorded under "Recorded
+risk" below, since a net8 pwiz can reference a net8 MARS; and it did not require every
+build machine to carry a .NET 10 SDK before MARS would compile at all.
 
-Three reasons for the default. A `net8.0` assembly executes unchanged on the .NET 9 and
-.NET 10 runtimes, so nothing is given up at run time. It removes the forward-reference
-problem recorded under "Recorded risk" below, since a net8 pwiz can reference a net8
-MARS. And it does not require every build machine to carry a .NET 10 SDK before MARS
-will compile at all.
+**Second revision - net10.0, single target.** pwiz-sharp retargeted from .NET 8 to
+.NET 10 in [ProteoWizard/pwiz PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619)
+(commit `b882847f215e`, "Retargeted the Skyline and pwiz-sharp trees from .NET 8 to
+.NET 10"). Reference compatibility is forward-only in the direction that now matters: a
+`net8.0` MARS.Pwiz cannot reference a `net10.0` MsData at all. The opt-in was a hedge
+against pwiz landing on net8 first, and pwiz did not, so it went along with
+`MarsIncludeNet10` and `MarsTargetFrameworks`. `LangVersion` moved from 12 to 14, the
+ceiling of the .NET 10 SDK, still pinned rather than `latest`.
 
-Nothing in `MARS.Core` uses a net10-only API, so raising the floor later is the same
-one-property change.
+What this costs is the SDK floor the first revision was protecting: building MARS now
+needs a .NET 10 SDK, 10.0.100 or newer, which is what pwiz's own `global.json` asks for.
+Nothing is given up at deployment - release artifacts are self-contained, and a
+framework-dependent build rolls forward.
 | mzML strategy | Passthrough | Byte-preserving modification of the existing file. Established in the Python implementation after psims and lxml-rewrite approaches produced files that broke DIA-NN and SeeMS. |
 | Python removal | After acceptance gates pass | Not before. |
 
 ### Recorded risk
 
-MARS targets `net10.0` while the pwiz port lands on `net8.0` first. .NET reference
-compatibility is forward-only, so a `net10.0` assembly cannot be referenced from a
-`net8.0` project. This is fine as long as MARS is consumed as a **process**
-(CLI invocation) rather than as a library. If in-process integration with net8-era
-pwiz becomes necessary before pwiz reaches net10, `MARS.Core` will need to
-multi-target `net8.0;net10.0`. Keeping `MARS.Core` free of net10-only APIs costs
-nothing now and preserves that option.
+**Closed.** The risk was that MARS would target `net10.0` while the pwiz port landed on
+`net8.0` first, leaving a `net10.0` MARS unreferenceable from a `net8.0` pwiz. It was
+answered by building `net8.0` for a while (first revision above), and it is now moot:
+pwiz-sharp is itself `net10.0`, so both sides are on the same framework and the
+multi-targeting that hedged it has been removed.
+
+The one framework constraint still in force is `Osprey.ML`'s, and it points the other
+way: it has to keep serving `Osprey.FDR` on `net472`, which MARS cannot supply. That is
+why `Osprey.ML` remains the sole owner of the boosting code and MARS compiles a
+hash-guarded vendored copy - see `third_party/Osprey.ML/UPSTREAM.json` and the drift
+guard in `MARS.Test`.
 
 ---
 
@@ -125,8 +137,7 @@ mars/
 ├── tests/                        # existing Python tests
 ├── dotnet/
 │   ├── MARS.sln
-│   ├── Directory.Build.props     # net8.0 by default, net10.0 opt-in
-│   ├── global.json               # rollForward latestMajor
+│   ├── Directory.Build.props     # net10.0, single target
 │   ├── MARS.Core/                # domain types, matching, features, model, correction
 │   ├── MARS.IO/                  # mzML passthrough, library readers, managed SQLite
 │   ├── MARS.OspreyML/            # compiles the vendored sources, nullable off
@@ -154,7 +165,7 @@ Mirror the Osprey conventions:
 <Project>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>

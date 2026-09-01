@@ -84,45 +84,43 @@ anywhere; it carries its own runtime.
 
 ```bash
 # from the dotnet/ directory, pick the target you want
-dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+dotnet publish MARS/MARS.csproj -c Release -f net10.0 \
     -r win-x64      --self-contained true -p:PublishSingleFile=true -o publish/win-x64
-dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+dotnet publish MARS/MARS.csproj -c Release -f net10.0 \
     -r linux-x64    --self-contained true -p:PublishSingleFile=true -o publish/linux-x64
-dotnet publish MARS/MARS.csproj -c Release -f net8.0 \
+dotnet publish MARS/MARS.csproj -c Release -f net10.0 \
     -r osx-arm64    --self-contained true -p:PublishSingleFile=true -o publish/osx-arm64
 ```
 
-Produces a ~69 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
+Produces a ~72 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`. An Intel Mac has to build from source:
 there is no `osx-x64` release, and an `osx-arm64` binary will not run there.
 
 ### Option 3: install the .NET runtime
 
-A framework-dependent build is about 2 MB but needs the **.NET 8 runtime** (or newer - MARS
-rolls forward). To *build* MARS you need the **.NET 8 SDK**, which includes the runtime.
+A framework-dependent build is about 2 MB but needs the **.NET 10 runtime** (or newer - MARS
+rolls forward). To *build* MARS you need the **.NET 10 SDK**, which includes the runtime.
 
 **Windows**
 
 ```powershell
-winget install Microsoft.DotNet.SDK.8
+winget install Microsoft.DotNet.SDK.10
 # runtime only:
-winget install Microsoft.DotNet.Runtime.8
+winget install Microsoft.DotNet.Runtime.10
 ```
 
-Or download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/8.0).
+Or download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 **Linux**
 
 ```bash
-# Ubuntu 22.04+ / Debian 12+
-sudo apt update && sudo apt install -y dotnet-sdk-8.0
-
-# Fedora / RHEL
-sudo dnf install -y dotnet-sdk-8.0
-
-# any distro, no root required
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0
+# any distro, no root required - and the route that always has 10.0
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0
 export PATH="$HOME/.dotnet:$PATH"
+
+# or from the distro, where the package exists - older releases may stop at 8.0
+sudo apt update && sudo apt install -y dotnet-sdk-10.0   # Ubuntu / Debian
+sudo dnf install -y dotnet-sdk-10.0                      # Fedora / RHEL
 ```
 
 **macOS**
@@ -132,7 +130,7 @@ brew install --cask dotnet-sdk
 ```
 
 Or download the `.pkg` from
-[dot.net/download](https://dotnet.microsoft.com/download/dotnet/8.0). On Apple silicon
+[dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0). On Apple silicon
 take the **Arm64** build.
 
 Check it worked:
@@ -150,7 +148,7 @@ dotnet build -c Release
 dotnet test
 ```
 
-The CLI lands at `MARS/bin/Release/net8.0/mars` (`mars.exe` on Windows). Add that
+The CLI lands at `MARS/bin/Release/net10.0/mars` (`mars.exe` on Windows). Add that
 directory to your `PATH`, or publish a single binary as above.
 
 **Dependencies are handled by `dotnet build`.** There is exactly one NuGet package,
@@ -163,12 +161,11 @@ be installed separately, but it does mean release artifacts are per-platform.
 have no package references at all and are pure managed; only `MARS.IO` pulls in
 `Parquet.Net`.
 
-Targets `net8.0` by default, which runs unchanged on .NET 9 and 10. With a .NET 10 SDK
-installed you can build the full matrix:
-
-```bash
-dotnet build -c Release -p:MarsIncludeNet10=true
-```
+Targets `net10.0`, so a **.NET 10 SDK (10.0.100 or newer) is required to build**. That floor
+comes from pwiz-sharp, the ProteoWizard .NET port MARS reads vendor formats through: it
+retargeted to `net10.0`, and .NET reference compatibility is forward-only, so a `net8.0` MARS
+could not reference it at all. Nothing has to be installed to *run* a release binary - those
+are self-contained.
 
 ### Platform status
 

@@ -16,16 +16,18 @@ dotnet build -c Release
 dotnet test
 ```
 
-Targets `net8.0` by default, which runs unchanged on the .NET 9 and .NET 10 runtimes.
-With a .NET 10 SDK installed, build the full matrix:
+Targets `net10.0`, single target. A **.NET 10 SDK, 10.0.100 or newer, is required to build**;
+`dotnet --list-sdks` has to show a 10.x entry.
 
-```
-dotnet build -c Release -p:MarsIncludeNet10=true
-```
+The floor is pwiz-sharp's. MARS used to build `net8.0` with `net10.0` behind an opt-in
+property, because pwiz-sharp - the ProteoWizard .NET port MARS reads vendor formats through -
+was net8.0 and .NET reference compatibility is forward-only. pwiz-sharp retargeted to
+`net10.0` in [ProteoWizard/pwiz PR #4619](https://github.com/ProteoWizard/pwiz/pull/4619), so
+the constraint reversed: a `net8.0` MARS cannot reference it at all. `MarsIncludeNet10` and
+`MarsTargetFrameworks` are gone with the multi-targeting they selected.
 
-Not `-p:MarsTargetFrameworks="net8.0;net10.0"`: a semicolon-separated list cannot survive the
-command line. The shell eats the quotes, and escaping the separator as `%3B` makes MSBuild read
-the whole string as one target framework name.
+Nothing has to be installed to *run* a release artifact - those are self-contained - and a
+framework-dependent build rolls forward past .NET 10. This is a build-machine requirement.
 
 One NuGet reference: `Parquet.Net`, for DIA-NN libraries. It carries a native
 compression library (`nironcompress`), which is the only native code in the tree.
