@@ -29,10 +29,11 @@ the constraint reversed: a `net8.0` MARS cannot reference it at all. `MarsInclud
 Nothing has to be installed to *run* a release artifact - those are self-contained - and a
 framework-dependent build rolls forward past .NET 10. This is a build-machine requirement.
 
-One NuGet reference: `Parquet.Net`, for DIA-NN libraries. It carries a native
-compression library (`nironcompress`), which is the only native code in the tree.
-`MARS.Core` and `MARS.OspreyML` have no package references and are pure managed; the
-dependency is confined to `MARS.IO`.
+Two NuGet references, both on `MARS.IO`: `Parquet.Net`, for DIA-NN libraries, which carries
+a native compression library (`nironcompress`) - the only native code in the tree - and
+`Snappier`, referenced directly only to lift the vulnerable version `Parquet.Net` resolves
+transitively. `MARS.Core`, `MARS.OspreyML`, `MARS.Pwiz` and `MARS` have no package references
+and are pure managed; `MARS.Test` adds xunit and the test SDK, which do not ship.
 
 BiblioSpec `.blib` files are read through a managed SQLite reader written for this purpose
 rather than `Microsoft.Data.Sqlite`, so that path adds no native code of its own.

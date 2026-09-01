@@ -198,15 +198,22 @@ dotnet test
 The CLI lands at `MARS/bin/Release/net10.0/mars` (`mars.exe` on Windows). Add that
 directory to your `PATH`, or publish a single binary as above.
 
-**Dependencies are handled by `dotnet build`.** There is exactly one NuGet package,
-`Parquet.Net`, used to read DIA-NN libraries. It brings a small native compression library
-(`nironcompress`) that ships alongside the binary in every release archive - nothing has to
-be installed separately, but it does mean release artifacts are per-platform.
+**Dependencies are handled by `dotnet build`.** Two NuGet packages, both on `MARS.IO`:
+
+- `Parquet.Net`, used to read DIA-NN libraries. It brings a small native compression library
+  (`nironcompress`) that ships alongside the binary in every release archive - nothing has to
+  be installed separately, but it does mean release artifacts are per-platform.
+- `Snappier`, referenced directly only to lift the version `Parquet.Net` would otherwise
+  resolve transitively, which carried a high-severity advisory. Snappy is the codec DIA-NN
+  writes, so this is on the path MARS actually uses. It goes away once `Parquet.Net` resolves
+  a safe version on its own.
+
+Both are confined to `MARS.IO`. `MARS.Core`, `MARS.OspreyML`, `MARS.Pwiz` and the `MARS`
+executable itself have no package references at all and are pure managed. `MARS.Test` adds
+xunit and the test SDK, which do not ship.
 
 `.blib` files are read through a managed SQLite reader written for this purpose rather than
-`Microsoft.Data.Sqlite`, so that path adds no native code. `MARS.Core` and `MARS.OspreyML`
-have no package references at all and are pure managed; only `MARS.IO` pulls in
-`Parquet.Net`.
+`Microsoft.Data.Sqlite`, so that path adds no native code.
 
 **Why .NET 10 and not something older.** MARS targets `net10.0` single-target. The floor
 comes from pwiz-sharp, the ProteoWizard .NET port MARS reads vendor formats through: it

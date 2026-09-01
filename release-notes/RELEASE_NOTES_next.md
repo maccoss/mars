@@ -43,8 +43,8 @@ One-sentence summary of the release, written when there is something to summaris
   output at any thread count.
 
   If you build from source, install a .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`,
-  or `curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0`). `dotnet
-  --list-sdks` has to show a 10.x entry.
+  or `curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0`).
+  `dotnet --list-sdks` has to show a 10.x entry.
 
 - **The pinned pwiz-sharp commit moved to the PR #4619 branch.**
   `dotnet/pwiz-sharp.json` now pins `Skyline/work/20260612_net8_port` at
