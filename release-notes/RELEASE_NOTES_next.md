@@ -57,3 +57,14 @@ One-sentence summary of the release, written when there is something to summaris
   breaks the build: the pwiz repository root now carries one asking for SDK 10.0.100, and an
   SDK-8 pin dropped under `pwiz-sharp/` shadows it. CI used to write exactly that; it no
   longer does.
+
+  One pwiz API changed across the pin, and MARS follows it:
+  `IVendorCentroidingSpectrumList.GetCentroidSpectrum` now requires the set of MS levels to
+  centroid, because pwiz moved that gate inside the reader - cpp applies it there against the
+  reader's own final MS level, which Waters rewrites and which non-MS spectra report as 0.
+  MARS passes `IntegerSet.Positive`, pwiz's `1-`: every MS spectrum, and no diode-array or
+  EMR trace. **This can change written output for one case:** a vendor file carrying UV/DAD
+  or other non-MS spectra, converted to mzXML, mzMLb or mgf. MARS previously asked the vendor
+  to centroid those too, which MassLynx cannot do and answers with an empty array; they are
+  now passed through as acquired. MS1 and MS2 spectra are unaffected, and files read as mzML
+  never took this path at all.
