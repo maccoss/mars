@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/maccoss/mars/actions/workflows/dotnet.yml/badge.svg)](https://github.com/maccoss/mars/actions/workflows/dotnet.yml)
 [![Release](https://img.shields.io/github/v/release/maccoss/mars?display_name=tag&sort=semver&label=release)](https://github.com/maccoss/mars/releases/latest)
-[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/github/license/maccoss/mars)](https://github.com/maccoss/mars/blob/main/LICENSE)
 
 Learns the systematic part of a mass spectrometer's m/z error from spectral library
@@ -52,6 +52,24 @@ package. See [release-notes/README.md](release-notes/README.md).
 
 ## Install
 
+**MARS requires .NET 10.** Whether you have to install it depends on how you get MARS:
+
+| | Needs .NET installed? |
+|---|---|
+| **Option 1** - download a release archive | **No.** Each archive is self-contained. |
+| **Option 2** - build your own single binary | Yes, the **.NET 10 SDK** - to build it. What comes out needs nothing. |
+| **Option 3** - framework-dependent build | Yes. The **SDK** to build it, and the **.NET 10 runtime** on every machine that runs it. |
+
+If you are not sure, take Option 1. If you already have .NET installed, check the version
+before assuming it is enough: **.NET 8 or 9 will not build MARS.** It fails with `NETSDK1045`,
+repeated once per project, saying "The current .NET SDK does not support targeting .NET 10.0".
+
+```bash
+dotnet --list-sdks
+```
+
+At least one line has to start with `10.`.
+
 ### Option 1: download a build (no .NET needed)
 
 Grab an archive from the [Releases page](https://github.com/maccoss/mars/releases). Each is
@@ -79,8 +97,9 @@ Actions tab.
 
 ### Option 2: build a single binary yourself
 
-Build once (see [Build from source](#build-from-source)) and copy the resulting file
-anywhere; it carries its own runtime.
+**Needs the .NET 10 SDK** - see [Option 3](#option-3-install-net-10) below if you do not have
+it. Build once (see [Build from source](#build-from-source)) and copy the resulting file
+anywhere; it carries its own runtime, so the machine you copy it *to* needs nothing.
 
 ```bash
 # from the dotnet/ directory, pick the target you want
@@ -96,30 +115,47 @@ Produces a ~72 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`. An Intel Mac has to build from source:
 there is no `osx-x64` release, and an `osx-arm64` binary will not run there.
 
-### Option 3: install the .NET runtime
+### Option 3: install .NET 10
 
-A framework-dependent build is about 2 MB but needs the **.NET 10 runtime** (or newer - MARS
-rolls forward). To *build* MARS you need the **.NET 10 SDK**, which includes the runtime.
+**Install the SDK, not the runtime**, unless you are certain you only ever want to run a
+framework-dependent build someone else produced. The SDK includes the runtime and is what
+`dotnet build` needs; a framework-dependent MARS is about 2 MB but has to find a .NET 10
+runtime on every machine it runs on.
 
-**Windows**
+Installing .NET 10 alongside an existing .NET 8 or 9 is fine and expected - they coexist, and
+nothing else on the machine switches to the new one.
+
+**Windows** - the SDK:
 
 ```powershell
 winget install Microsoft.DotNet.SDK.10
-# runtime only:
+```
+
+Or, if you only need to *run* a framework-dependent build:
+
+```powershell
 winget install Microsoft.DotNet.Runtime.10
 ```
 
-Or download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0).
+Either can also be downloaded from
+[dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 **Linux**
 
 ```bash
-# any distro, no root required - and the route that always has 10.0
 curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0
 export PATH="$HOME/.dotnet:$PATH"
+```
 
-# or from the distro, where the package exists - older releases may stop at 8.0
+That is the route that works on any distribution and needs no root. The distribution packages
+are fine where they exist, but a release that predates .NET 10 will not carry them - check
+what you actually got before moving on:
+
+```bash
 sudo apt update && sudo apt install -y dotnet-sdk-10.0   # Ubuntu / Debian
+```
+
+```bash
 sudo dnf install -y dotnet-sdk-10.0                      # Fedora / RHEL
 ```
 
@@ -129,17 +165,28 @@ sudo dnf install -y dotnet-sdk-10.0                      # Fedora / RHEL
 brew install --cask dotnet-sdk
 ```
 
-Or download the `.pkg` from
-[dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0). On Apple silicon
-take the **Arm64** build.
+The `dotnet-sdk` cask tracks the current release, so confirm it gave you 10.x rather than
+assuming. Otherwise download the `.pkg` from
+[dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0) - on Apple silicon take
+the **Arm64** build.
 
-Check it worked:
+**Confirm it worked, on any platform.** This is the step worth not skipping:
 
 ```bash
 dotnet --list-sdks
 ```
 
+At least one line has to start with `10.` - for example `10.0.400 [C:\Program Files\dotnet\sdk]`.
+Older versions listed alongside it do not matter: MARS ships no `global.json`, so `dotnet`
+uses the newest SDK it finds. If the only lines say `8.0.x` or `9.0.x`, the install did not
+land, and `dotnet build` will fail with `NETSDK1045` - "The current .NET SDK does not support
+targeting .NET 10.0".
+
 ## Build from source
+
+**Prerequisite: the .NET 10 SDK, 10.0.100 or newer.** Nothing else - no Python, no vendored
+libraries to fetch. See [Option 3](#option-3-install-net-10) to install it, and
+`dotnet --list-sdks` to confirm a `10.` line is there before you start.
 
 ```bash
 git clone https://github.com/maccoss/mars.git
@@ -161,11 +208,11 @@ be installed separately, but it does mean release artifacts are per-platform.
 have no package references at all and are pure managed; only `MARS.IO` pulls in
 `Parquet.Net`.
 
-Targets `net10.0`, so a **.NET 10 SDK (10.0.100 or newer) is required to build**. That floor
+**Why .NET 10 and not something older.** MARS targets `net10.0` single-target. The floor
 comes from pwiz-sharp, the ProteoWizard .NET port MARS reads vendor formats through: it
 retargeted to `net10.0`, and .NET reference compatibility is forward-only, so a `net8.0` MARS
-could not reference it at all. Nothing has to be installed to *run* a release binary - those
-are self-contained.
+could not reference it at all. MARS built `net8.0` by default until then. Nothing has to be
+installed to *run* a release binary - those are self-contained.
 
 ### Platform status
 

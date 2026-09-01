@@ -312,7 +312,9 @@ understood well enough to be refused with a reason, and is deliberately not adve
 
 The pwiz reference is optional, because pwiz-sharp has no package feed yet. A MARS built
 without it writes mzML and refuses the others with an explanatory error; nothing else about
-MARS changes. To enable them, point the build at a pwiz checkout:
+MARS changes. To enable them, point the build at a pwiz checkout - this needs the **.NET 10
+SDK** the way any MARS build does, and a full pwiz working tree rather than a sparse checkout
+of `pwiz-sharp/`:
 
 ```bash
 dotnet build -c Release -p:PwizSharpDir=/path/to/pwiz/pwiz-sharp
