@@ -80,6 +80,8 @@ specify from the outside, and they are also where a port most reliably goes wron
 | Target framework | `net8.0`, opting into `net10.0` | **Revised.** See below. |
 | Model implementation | Reuse `Osprey.ML.GradientBoostedTrees` | Already implements the XGBoost regularized objective (histogram split finding, Newton boosting, L1 + L2 leaf penalties, gamma, min_child_weight, subsampling) and is already deterministic by construction. |
 | Model ownership | `Osprey.ML` remains the sole owner | `Osprey.FDR` needs it on net472, which MARS at net10 cannot supply. Two copies would drift silently in the split-finding code. |
+| mzML strategy | Passthrough | Byte-preserving modification of the existing file. Established in the Python implementation after psims and lxml-rewrite approaches produced files that broke DIA-NN and SeeMS. |
+| Python removal | After acceptance gates pass | Not before. |
 
 ### Revision: target framework
 
@@ -98,8 +100,6 @@ will compile at all.
 
 Nothing in `MARS.Core` uses a net10-only API, so raising the floor later is the same
 one-property change.
-| mzML strategy | Passthrough | Byte-preserving modification of the existing file. Established in the Python implementation after psims and lxml-rewrite approaches produced files that broke DIA-NN and SeeMS. |
-| Python removal | After acceptance gates pass | Not before. |
 
 ### Recorded risk
 
