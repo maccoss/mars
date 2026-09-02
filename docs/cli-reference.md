@@ -106,8 +106,11 @@ mars calibrate --mzml run.raw --library report-lib.parquet --diann-report report
 historical. A directory picks up every file MARS can read, not only `.mzML`.
 
 Reading a `.raw` gives the same answer as reading the mzML msconvert would have made from it.
-On an Astral run matched against the same DIA-NN library, both paths return 230,781 fragment
-matches with the same median, standard deviation and MAD to every reported digit.
+Re-verified on .NET 10 over the five-file Stellar reference cohort: reading each `.raw`
+directly reproduces the frozen mzML digests exactly - 352,349 fragment matches, every column
+identical. Measured earlier on an Astral run against the same DIA-NN library, where both paths
+returned 230,781 fragment matches with the same median, standard deviation and MAD to every
+reported digit; that figure predates the .NET 10 retarget and has not been re-taken.
 
 It is not faster to *read* - that run takes 53 s from `.raw` against 15 s from the converted
 mzML, and vendor reading does not thread - so the saving is the conversion that no longer has

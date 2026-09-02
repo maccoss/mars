@@ -210,9 +210,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # There is no separate net10.0 job any more. net10.0 IS the target, so the build matrix
-  # above is that job; an informational one alongside it would run the same compilation twice.
-
   determinism:
     name: Determinism
     runs-on: ubuntu-latest

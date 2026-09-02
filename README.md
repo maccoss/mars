@@ -111,7 +111,8 @@ dotnet publish MARS/MARS.csproj -c Release -f net10.0 \
     -r osx-arm64    --self-contained true -p:PublishSingleFile=true -o publish/osx-arm64
 ```
 
-Produces a ~72 MB `mars` (`mars.exe` on Windows). Other runtime identifiers:
+Produces a `mars` of about 72 MiB / 75 MB (`mars.exe` on Windows; 75,138,382 bytes
+measured for win-x64 at 26.3.0). Other runtime identifiers:
 `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`. An Intel Mac has to build from source:
 there is no `osx-x64` release, and an `osx-arm64` binary will not run there.
 

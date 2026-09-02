@@ -23,6 +23,23 @@
          developer on a future SDK cannot use syntax that compiles locally and fails in CI.
          Raising this means raising the SDK floor in .github/workflows/dotnet.yml too. -->
     <LangVersion>14</LangVersion>
+    <!-- Both of these were inherited defaults under the .NET 8 SDK and are named here only
+         because moving to SDK 10 changed them underneath us.
+
+         NuGetAuditMode: .NET 9 changed the default from "direct" to "all", so restore began
+         auditing the transitive graph. Under -warnaserror - which the vendor job passes to a
+         build that restores - an advisory published against anything below Parquet.Net would
+         fail CI with nothing in MARS changed. "direct" is the pre-existing behaviour and what
+         pwiz-sharp pins for itself. Transitive advisories are still findable on demand with
+         `dotnet list package` with the vulnerable and include-transitive switches, which is
+         how the Snappier one in MARS.IO was caught. (Those switches are spelled out rather
+         than written literally because a double hyphen cannot appear inside an XML comment.)
+
+         AnalysisLevel: pinned for the same reason LangVersion is. It otherwise tracks the
+         SDK, so a future 10.0.x feature band could introduce an analyzer warning that
+         -warnaserror turns into a build failure without a commit to MARS. -->
+    <NuGetAuditMode>direct</NuGetAuditMode>
+    <AnalysisLevel>10.0</AnalysisLevel>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>

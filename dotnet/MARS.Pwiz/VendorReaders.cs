@@ -1,6 +1,7 @@
 // Copyright (c) University of Washington 2026. Licensed under the MIT License.
 
 using Pwiz.Data.MsData.Readers;
+using Pwiz.Util.Misc;
 using Pwiz.Vendor.Bruker;
 using Pwiz.Vendor.Thermo;
 #if MARS_SCIEX
@@ -35,6 +36,27 @@ namespace MARS.Pwiz;
 /// </remarks>
 internal static class VendorReaders
 {
+    /// <summary>
+    /// The MS levels MARS asks a vendor reader to centroid: 1 and up, never 0.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetCentroidSpectrum</c> requires this set because pwiz moved the gate inside the
+    /// reader, where cpp applies it against the reader's own FINAL MS level. Two things depend
+    /// on that placement: Waters promotes MSe survey scans to level 2 before gating, and
+    /// non-MS spectra report level 0. Centroiding one of those destroys it - MassLynx cannot
+    /// centroid an absorbance-vs-wavelength trace and returns nothing.
+    /// </para>
+    /// <para>
+    /// This is pwiz's <c>"1-"</c>, and deliberately NOT <c>IntegerSet.Positive</c>, which is
+    /// the same value: <c>IntegerSet</c> is mutable and <c>Positive</c> is a
+    /// <c>static readonly</c> instance shared with everything else in the process, so anything
+    /// that inserted into it would silently change which levels MARS centroids. MARS owns this
+    /// one.
+    /// </para>
+    /// </remarks>
+    internal static readonly IntegerSet CentroidLevels = new(1, int.MaxValue);
+
     static VendorReaders() => Register();
 
     /// <summary>

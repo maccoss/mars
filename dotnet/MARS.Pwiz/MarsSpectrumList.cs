@@ -9,7 +9,6 @@ using Pwiz.Data.Common.Cv;
 using Pwiz.Data.Common.Params;
 using Pwiz.Data.MsData.Processing;
 using Pwiz.Data.MsData.Spectra;
-using Pwiz.Util.Misc;
 
 namespace MARS.Pwiz;
 
@@ -150,16 +149,11 @@ internal sealed class MarsSpectrumList : SpectrumListBase
         Spectrum spectrum = _inner.GetSpectrum(index, getBinaryData: true);
         if (_centroider is null) return spectrum;
 
-        // MS levels 1 and up, never 0. GetCentroidSpectrum took two arguments under the
-        // old pin; it now requires the MS-level set, because pwiz moved the gate inside the
-        // reader - cpp applies it there against the reader's own FINAL level, which Waters
-        // rewrites (MSe survey scans get promoted to 2) and which non-MS spectra report as
-        // 0. IntegerSet.Positive is pwiz's "1-": every MS spectrum, and no DiodeArray or
-        // EMR trace, which MassLynx cannot centroid and returns empty. The profile test
-        // below is now belt-and-braces - the reader repeats it - but it also saves the
-        // second full read on a run that is already centroided.
+        // Centroid every MS level and no non-MS trace; the reader applies the gate itself
+        // now, so the profile test below only saves the second read on centroided runs.
+        // See VendorReaders.CentroidLevels for why the set is ours and not IntegerSet.Positive.
         return spectrum.Params.HasCVParam(CVID.MS_profile_spectrum)
-            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true, IntegerSet.Positive)
+            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true, VendorReaders.CentroidLevels)
             : spectrum;
     }
 
