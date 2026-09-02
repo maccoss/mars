@@ -28,7 +28,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore
         working-directory: dotnet
@@ -62,7 +62,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Read the pinned pwiz-sharp commit
         id: pin
@@ -92,16 +92,11 @@ jobs:
           cd pwiz
           git checkout --detach ${{ steps.pin.outputs.commit }}
 
-      # pwiz-sharp does not carry a global.json, so a runner with a newer SDK fails to resolve
-      # one for the nested `dotnet run` that generates the vendor pins. Written here rather
-      # than committed upstream because it is our build's problem to solve.
-      - name: Pin the SDK for pwiz-sharp
-        shell: bash
-        run: |
-          cat > pwiz/pwiz-sharp/global.json <<'JSON'
-          { "sdk": { "version": "8.0.0", "rollForward": "latestFeature" } }
-          JSON
-
+      # No SDK pin is written here any more. The pwiz tree now carries its own global.json
+      # asking for 10.0.100 with rollForward latestFeature, which is exactly what the nested
+      # `dotnet run` that generates the vendor pins needs. Writing an SDK-8 pin under
+      # pwiz-sharp/ would now shadow it and fail the build outright, since pwiz-sharp is
+      # net10.0.
       - name: Build with vendor support
         working-directory: dotnet
         shell: bash
@@ -128,7 +123,7 @@ jobs:
         working-directory: dotnet
         shell: bash
         run: |
-          dotnet publish MARS/MARS.csproj -c Release -f net8.0 -r win-x64 "-warnAsMessage:CS1591;CA1859;IL3000"             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
+          dotnet publish MARS/MARS.csproj -c Release -f net10.0 -r win-x64 "-warnAsMessage:CS1591;CA1859;IL3000"             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
 
           cd "$GITHUB_WORKSPACE/vendor-build"
           capabilities=$(./mars.exe --version)
@@ -171,13 +166,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Publish self-contained
         working-directory: dotnet
         run: >
           dotnet publish MARS/MARS.csproj
-          -c Release -f net8.0 -r ${{ matrix.rid }}
+          -c Release -f net10.0 -r ${{ matrix.rid }}
           --self-contained true
           -p:PublishSingleFile=true
           -p:DebugType=none
@@ -215,39 +210,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # MARS targets net8.0 by default, which runs unchanged on the .NET 10 runtime. Building
-  # AGAINST net10.0 is the forward-looking case the port spec asks for. It is not the
-  # target that ships, so it reports rather than gates.
-  net10:
-    name: Build and test against net10.0 (informational)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
-
-      # A semicolon-separated list cannot be passed on the command line: the shell strips
-      # the quotes and MSBuild reads net10.0 as a second property, and escaping it as %3B
-      # instead makes MSBuild treat the whole string as one target framework.
-      # MarsIncludeNet10 selects the pair inside Directory.Build.props.
-      - name: Build
-        working-directory: dotnet
-        run: dotnet build -c Release -p:MarsIncludeNet10=true
-
-      - name: Test
-        working-directory: dotnet
-        run: >
-          dotnet test --no-build -c Release -f net10.0
-          -p:MarsIncludeNet10=true
-          --logger "console;verbosity=normal"
-
   determinism:
     name: Determinism
     runs-on: ubuntu-latest
@@ -257,7 +219,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Build
         working-directory: dotnet
@@ -279,7 +241,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # Osprey.ML owns the boosting code; MARS carries a hash-guarded copy. This fails
       # when someone edits the copy instead of fixing it upstream in pwiz.

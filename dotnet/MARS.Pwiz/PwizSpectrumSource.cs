@@ -115,8 +115,11 @@ internal sealed class PwizSpectrumSource : ISpectrumSource
         if (_centroider is null) return _spectra.GetSpectrum(index, getBinaryData: true);
 
         Spectrum spectrum = _spectra.GetSpectrum(index, getBinaryData: true);
+        // Centroid every MS level and no non-MS trace; the reader applies the gate itself
+        // now, so the profile test below only saves the second read on centroided runs.
+        // See VendorReaders.CentroidLevels for why the set is ours and not IntegerSet.Positive.
         return spectrum.Params.HasCVParam(CVID.MS_profile_spectrum)
-            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true)
+            ? _centroider.GetCentroidSpectrum(index, getBinaryData: true, VendorReaders.CentroidLevels)
             : spectrum;
     }
 

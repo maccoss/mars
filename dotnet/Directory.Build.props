@@ -1,31 +1,45 @@
 <Project>
 
   <!--
-    MARS builds against net8.0 by default because that is the newest SDK guaranteed
-    to be present on the lab build machines. The spec targets net10.0; when a .NET 10
-    SDK is installed, build the full matrix with:
+    MARS targets net10.0.
 
-        dotnet build -p:MarsIncludeNet10=true
+    It used to build net8.0 by default with net10.0 behind an opt-in property, because
+    pwiz-sharp - the ProteoWizard .NET port MARS reads vendor formats through - was itself
+    net8.0, and .NET reference compatibility is forward-only: a net8.0 project cannot
+    reference a net10.0 one. pwiz-sharp retargeted to net10.0 in ProteoWizard/pwiz PR #4619,
+    so the constraint now points the other way and MARS has to be net10.0 to build against it
+    at all.
 
-    MARS.Core deliberately avoids net10-only APIs so this stays a one-property change.
-    A net8.0 assembly also executes unchanged on the .NET 9 and .NET 10 runtimes.
+    That raises the SDK floor: building MARS needs a .NET 10 SDK (10.0.100 or newer, which is
+    what pwiz's own global.json asks for). RUNNING a release artifact needs nothing - they are
+    self-contained - and a framework-dependent build rolls forward, so this is a build-machine
+    requirement rather than a deployment one.
   -->
   <PropertyGroup>
-    <!-- Add net10.0 with -p:MarsIncludeNet10=true rather than by passing a semicolon-
-         separated list. A list cannot survive the command line: the shell eats the quotes,
-         and escaping the separator as %3B makes MSBuild treat the whole string as one
-         target framework ("The TargetFramework value 'net8.0;net10.0' is not valid").
-         MarsTargetFrameworks is still honoured for anything that sets it as a real MSBuild
-         property, where the separator is unambiguous. -->
-    <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == '' and '$(MarsIncludeNet10)' == 'true'">net8.0;net10.0</MarsTargetFrameworks>
-    <MarsTargetFrameworks Condition="'$(MarsTargetFrameworks)' == ''">net8.0</MarsTargetFrameworks>
-    <TargetFrameworks>$(MarsTargetFrameworks)</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <!-- Pinned rather than 'latest' so the language version does not silently track
-         whichever SDK a developer happens to have installed. CI builds with the .NET 8
-         SDK, whose ceiling is C# 12; a developer on a newer SDK would otherwise be able
-         to use C# 13 or 14 syntax that compiles locally and fails in CI. Raising this
-         means raising the SDK floor in .github/workflows/dotnet.yml too. -->
-    <LangVersion>12</LangVersion>
+         whichever SDK a developer happens to have installed. C# 14 is the ceiling of the
+         .NET 10 SDK, so this is the newest version CI can compile; naming it means a
+         developer on a future SDK cannot use syntax that compiles locally and fails in CI.
+         Raising this means raising the SDK floor in .github/workflows/dotnet.yml too. -->
+    <LangVersion>14</LangVersion>
+    <!-- Both of these were inherited defaults under the .NET 8 SDK and are named here only
+         because moving to SDK 10 changed them underneath us.
+
+         NuGetAuditMode: .NET 9 changed the default from "direct" to "all", so restore began
+         auditing the transitive graph. Under -warnaserror - which the vendor job passes to a
+         build that restores - an advisory published against anything below Parquet.Net would
+         fail CI with nothing in MARS changed. "direct" is the pre-existing behaviour and what
+         pwiz-sharp pins for itself. Transitive advisories are still findable on demand with
+         `dotnet list package` with the vulnerable and include-transitive switches, which is
+         how the Snappier one in MARS.IO was caught. (Those switches are spelled out rather
+         than written literally because a double hyphen cannot appear inside an XML comment.)
+
+         AnalysisLevel: pinned for the same reason LangVersion is. It otherwise tracks the
+         SDK, so a future 10.0.x feature band could introduce an analyzer warning that
+         -warnaserror turns into a build failure without a commit to MARS. -->
+    <NuGetAuditMode>direct</NuGetAuditMode>
+    <AnalysisLevel>10.0</AnalysisLevel>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -34,7 +48,7 @@
     <Company>University of Washington</Company>
     <Product>MARS</Product>
     <Copyright>Copyright (c) University of Washington 2026</Copyright>
-    <Version>26.2.0</Version>
+    <Version>26.3.0</Version>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 

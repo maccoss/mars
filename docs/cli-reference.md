@@ -106,8 +106,11 @@ mars calibrate --mzml run.raw --library report-lib.parquet --diann-report report
 historical. A directory picks up every file MARS can read, not only `.mzML`.
 
 Reading a `.raw` gives the same answer as reading the mzML msconvert would have made from it.
-On an Astral run matched against the same DIA-NN library, both paths return 230,781 fragment
-matches with the same median, standard deviation and MAD to every reported digit.
+Re-verified on .NET 10 over the five-file Stellar reference cohort: reading each `.raw`
+directly reproduces the frozen mzML digests exactly - 352,349 fragment matches, every column
+identical. Measured earlier on an Astral run against the same DIA-NN library, where both paths
+returned 230,781 fragment matches with the same median, standard deviation and MAD to every
+reported digit; that figure predates the .NET 10 retarget and has not been re-taken.
 
 It is not faster to *read* - that run takes 53 s from `.raw` against 15 s from the converted
 mzML, and vendor reading does not thread - so the saving is the conversion that no longer has
@@ -312,7 +315,9 @@ understood well enough to be refused with a reason, and is deliberately not adve
 
 The pwiz reference is optional, because pwiz-sharp has no package feed yet. A MARS built
 without it writes mzML and refuses the others with an explanatory error; nothing else about
-MARS changes. To enable them, point the build at a pwiz checkout:
+MARS changes. To enable them, point the build at a pwiz checkout - this needs the **.NET 10
+SDK** the way any MARS build does, and a full pwiz working tree rather than a sparse checkout
+of `pwiz-sharp/`:
 
 ```bash
 dotnet build -c Release -p:PwizSharpDir=/path/to/pwiz/pwiz-sharp

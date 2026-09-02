@@ -41,7 +41,7 @@ dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendor
 Python implementation. Use the built binary, or `dotnet run --project dotnet/MARS/MARS.csproj --`.
 
 ```bash
-./dotnet/MARS/bin/Release/net8.0/mars calibrate \
+./dotnet/MARS/bin/Release/net10.0/mars calibrate \
   --mzml "example-data/Ste-2024-12-02_HeLa_20msIIT_GPFDIA_*.mzML" \
   --prism-report example-data/Stellar-HeLa-GPF-PRISM.csv \
   --tolerance 0.3 \

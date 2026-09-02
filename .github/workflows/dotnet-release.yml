@@ -105,7 +105,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # pwiz-sharp picks its extractor by OS alone: 7za.exe on Windows, and otherwise the
       # 7zz that ships beside it - which is an x86-64 Linux ELF. macOS cannot execute that on
@@ -157,13 +157,9 @@ jobs:
           cd pwiz
           git checkout --detach ${{ steps.pin.outputs.commit }}
 
-      - name: Pin the SDK for pwiz-sharp
-        shell: bash
-        run: |
-          cat > pwiz/pwiz-sharp/global.json <<'JSON'
-          { "sdk": { "version": "8.0.0", "rollForward": "latestFeature" } }
-          JSON
-
+      # No SDK pin is written here any more: the pwiz tree carries its own global.json asking
+      # for 10.0.100 with rollForward latestFeature. An SDK-8 pin under pwiz-sharp/ would
+      # shadow it and fail the build, since pwiz-sharp is net10.0.
       - name: Publish
         working-directory: dotnet
         shell: bash
@@ -180,7 +176,7 @@ jobs:
           # and pwiz builds with TreatWarningsAsErrors, so those would become build errors.
           # This names three codes and leaves every other warning visible - and -v quiet does
           # not do it, which is worth recording because it looks like it should.
-          dotnet publish MARS/MARS.csproj "-warnAsMessage:CS1591;CA1859;IL3000"             -c Release -f net8.0 -r ${{ matrix.rid }}             --self-contained true             -p:PublishSingleFile=true             -p:DebugType=none             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             $sevenzip             -o publish/${{ matrix.rid }}
+          dotnet publish MARS/MARS.csproj "-warnAsMessage:CS1591;CA1859;IL3000"             -c Release -f net10.0 -r ${{ matrix.rid }}             --self-contained true             -p:PublishSingleFile=true             -p:DebugType=none             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             $sevenzip             -o publish/${{ matrix.rid }}
 
       # Parquet.Net carries a native compression library, so the archive is a binary plus
       # that library rather than a lone executable.
