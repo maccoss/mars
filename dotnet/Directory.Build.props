@@ -1,4 +1,4 @@
-<Project>
+<Project TreatAsLocalProperty="TreatWarningsAsErrors">
 
   <!--
     MARS targets net10.0.
@@ -39,6 +39,35 @@
          SDK, so a future 10.0.x feature band could introduce an analyzer warning that
          -warnaserror turns into a build failure without a commit to MARS. -->
     <NuGetAuditMode>direct</NuGetAuditMode>
+    <!-- Set here, and fenced by the TreatAsLocalProperty on the Project element above, so
+         that the vendor builds can pass -p:TreatWarningsAsErrors=false for pwiz's projects
+         without taking MARS's own code with it.
+
+         Why they pass it: MARS compiles pwiz-sharp from source, from a tree cloned at the
+         commit dotnet/pwiz-sharp.json names, and pwiz sets TreatWarningsAsErrors for its own
+         projects. Anything pwiz warns about is therefore a build failure here, in code this
+         repository cannot change without moving the pin. A restore-time NuGet advisory is
+         the case that bites: pwiz pins System.Security.Cryptography.Xml 8.0.4 as the clean
+         version, four advisories were published against it on 2026-10-13, and the vendor job
+         and the release publish both began failing with nothing in MARS changed.
+
+         Turning pwiz's promotion off rather than the audit is the point, and it lets nothing
+         through to the binary. pwiz's audit still runs and still prints every advisory against
+         what pwiz declares. What MARS ships is checked separately and more strictly:
+         MARS.Pwiz audits its WHOLE package graph when pwiz is present, so an advisory against
+         any version that actually reaches MARS - whoever declared it - fails the build,
+         because this property stays true for everything under dotnet/ and NuGet reads it
+         directly. MARS.Pwiz also overrides that pin with a patched 10.0.x release, which is
+         why the build passes today: pwiz's 8.0.4 is declared, not shipped.
+
+         A -p: value is a global property and would otherwise override what a project sets.
+         TreatAsLocalProperty demotes it to a local one for this directory, which lets the
+         value here win. The CI job passes -warnnotaserror:NU1903 as well, because its
+         -warnaserror is an MSBuild-level promotion that ignores this property; MARS projects
+         are still covered there by the value set here. Verified by restoring the vendor
+         build with both flags and a deliberately vulnerable direct reference in MARS.Test:
+         MARS.Test failed, pwiz's Sciex.csproj reported its four advisories as warnings. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>10.0</AnalysisLevel>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

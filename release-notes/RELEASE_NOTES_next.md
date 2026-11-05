@@ -94,6 +94,40 @@ recorrect them.** The affected runs are identifiable: the new window-placement c
 them, and so does a QC report whose median delta sits far from zero relative to the
 tolerance.
 
+### Windows builds carried two Microsoft libraries with security advisories
+
+Windows builds of MARS include pwiz's Sciex reader, and with it two Microsoft libraries:
+`System.Security.Cryptography.Xml` 8.0.4, which pwiz pins, and
+`System.Security.Cryptography.Pkcs` 8.0.1, which that version pulls in. Microsoft's .NET
+security release of 2026-10-13 published six advisories against them - four against the
+first (CVE-2026-96958, 96959, 96960 and 96222), two against the second (CVE-2026-84008 and
+70162) - covering denial of service and spoofing.
+
+Both now come from the patched .NET 10 line, 10.0.14. pwiz's pin is a .NET 8-line version
+left over from before pwiz-sharp moved to .NET 10, and MARS cannot change it, so MARS now
+overrides it for what it builds and ships. Only the Windows artifacts are affected: the Sciex
+reader is the only part of pwiz that brings either library in, and MARS includes it only on
+Windows.
+
+MARS uses neither library itself; they serve the Sciex reader's configuration plumbing.
+They are fixed rather
+than argued about because a release should not ship a known advisory, whether or not
+MARS ever reaches the affected code.
+
+**How this was found, and what now stops it recurring.** The advisories first appeared as a
+build failure: pwiz treats an advisory against a package it declares as an error, so the
+vendor CI job and the release publish both began failing on 2026-10-13 with nothing in MARS
+changed. That check could only ever see half of the problem. pwiz audits the packages it
+names directly, and the Pkcs library arrives one step removed, so its two advisories never
+appeared there at all.
+
+The vendor builds now stop pwiz's error over a pin MARS has overridden, and audit instead
+what MARS actually ships: every package version that reaches the binary, whoever declared
+it. That check is fatal, and it is the one that found the Pkcs advisories.
+
+This changes which library versions the Windows binaries bundle. Neither library is used by
+the calibration or by any of MARS's writers.
+
 ## Performance
 
 Anchoring reads a bounded sample of each run before the matching pass, sized by what it

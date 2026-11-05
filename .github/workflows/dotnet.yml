@@ -109,7 +109,33 @@ jobs:
           # and pwiz builds with TreatWarningsAsErrors, so those would become build errors.
           # This names three codes and leaves every other warning visible - and -v quiet does
           # not do it, which is worth recording because it looks like it should.
-          dotnet build -c Release -warnaserror "-warnAsMessage:CS1591;CA1859;IL3000"             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
+          #
+          # The last two flags stop a NuGet advisory against a package PWIZ pins from failing
+          # a build that cannot act on it. pwiz's tree is cloned at the commit
+          # dotnet/pwiz-sharp.json names, so its package versions are not this repository's
+          # to bump; four advisories against its System.Security.Cryptography.Xml 8.0.4 pin
+          # broke this job and the release publish on 2026-10-13 with nothing in MARS changed.
+          #
+          # Two flags because two separate things promote the warning, and both have to go:
+          #
+          #   -p:TreatWarningsAsErrors=false  turns off pwiz's OWN promotion, which pwiz sets
+          #       in pwiz-sharp/Directory.Build.props and which applies whether or not
+          #       -warnaserror is passed.
+          #   -warnnotaserror:NU1903          excludes the code from -warnaserror above, which
+          #       is an MSBuild-level promotion and ignores project properties entirely.
+          #
+          # Neither reaches MARS's own projects. dotnet/Directory.Build.props declares
+          # TreatWarningsAsErrors a local property and sets it back to true, which NuGet reads
+          # directly, so an advisory against a package MARS references is still fatal - that
+          # was checked by putting a known-vulnerable reference in MARS.Test and watching this
+          # exact command fail on it while Sciex.csproj only warned.
+          #
+          # Nothing is suppressed: the audit still runs over pwiz's packages and still prints
+          # every advisory it finds, on every vendor build. And nothing reaches the binary
+          # unchecked: MARS.Pwiz audits its whole package graph when pwiz is present, so a
+          # vulnerable version MARS actually resolves fails this build whoever declared it.
+          # MARS.Pwiz.csproj also carries the patched override that makes it pass today.
+          dotnet build -c Release -warnaserror "-warnAsMessage:CS1591;CA1859;IL3000"             -warnnotaserror:NU1903             -p:TreatWarningsAsErrors=false             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true
 
       - name: Test with vendor support
         working-directory: dotnet
@@ -123,7 +149,10 @@ jobs:
         working-directory: dotnet
         shell: bash
         run: |
-          dotnet publish MARS/MARS.csproj -c Release -f net10.0 -r win-x64 "-warnAsMessage:CS1591;CA1859;IL3000"             --self-contained true -p:PublishSingleFile=true             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
+          # -p:TreatWarningsAsErrors=false for the reason given on the build step above. No
+          # -warnnotaserror here: this publish does not pass -warnaserror, so pwiz's own
+          # promotion is the only one to turn off.
+          dotnet publish MARS/MARS.csproj -c Release -f net10.0 -r win-x64 "-warnAsMessage:CS1591;CA1859;IL3000"             --self-contained true -p:PublishSingleFile=true             -p:TreatWarningsAsErrors=false             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             -o "$GITHUB_WORKSPACE/vendor-build"
 
           cd "$GITHUB_WORKSPACE/vendor-build"
           capabilities=$(./mars.exe --version)
