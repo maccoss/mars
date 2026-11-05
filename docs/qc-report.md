@@ -51,6 +51,35 @@ Which one to read is a property of the instrument, not of the report. On the Ste
 below the interesting numbers are hundredths of a Th; on Astral data they are single-digit
 ppm.
 
+## Matching window
+
+Before the accuracy figures, one line per run saying where its matching window ended up and
+how the matched errors sat inside it:
+
+```
+Matching window:
+  Ste-2024-12-02_HeLa_600-700_16.mzML: centred on the library m/z; mode +0.023 Th from the
+  window centre (8 % of the half-window), edge density 13 % of the mode's
+```
+
+`centred at -0.757 Th (m/z anchor)` instead of `centred on the library m/z` means MARS found
+a coarse offset in this run and moved the window onto it. That is reported rather than
+warned about: the offset is a fact about the instrument, and finding it is what lets the rest
+of the report be measured against the real fragment peaks.
+
+The two percentages say whether the window was over the peaks at all. A real fragment
+population has a mode near the window centre and almost nothing at the edges; both numbers
+run well under 20%. When either passes 40% the report carries a warning, and **everything
+below it should be treated as unreliable** - not because the numbers are bad, but because
+they will not be. A window that has drifted off the monoisotopic peak onto an isotope of it
+produces residuals as tight as a correct match, so the MAD, the reduction and the
+cross-validation all look normal while the correction is a whole isotope spacing wrong.
+
+That is the one failure in this report that the accuracy figures cannot show you, which is
+why it is printed above them. See
+[the algorithm doc](algorithm.md#checking-that-the-window-was-in-the-right-place) for where
+the thresholds come from.
+
 ## The verdict line
 
 At the top, before any figure. After `calibrate`:
@@ -246,6 +275,9 @@ on either.
 - **Whether the library was right.** A model trained against "theoretical" m/z values that
   carry someone else's calibration error will produce a confident-looking report and wrong
   corrections. See [spectral libraries](spectral-libraries.md).
+- **Whether the right peak was matched** - not from the accuracy figures, anyway. An isotope
+  match has a residual as tight as a real one. The Matching window section above is what
+  answers this, and it is the reason that section exists.
 - **Whether the file is well-formed.** That is `mars verify`.
 - **Whether the correction generalizes.** The validation MAE in the summary is the only
   guard, and it is computed on rows from the same cohort.

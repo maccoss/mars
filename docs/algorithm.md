@@ -94,6 +94,97 @@ Positive means the instrument reported the peak too high. There is no q-value fi
 no outlier trimming: confidence comes from the library having been built from confident
 identifications, and the tolerance bounds the label by construction.
 
+### Anchoring the window on the monoisotopic peak
+
+Everything above assumes the window is over the peak. That holds while the instrument's
+error is small against the window, and stops holding before the error reaches the window
+width - because what replaces the monoisotopic peak inside the window is not nothing.
+
+A fragment's isotopes sit `1.00335 / z` Th apart, that being the 13C-12C mass difference
+divided by the charge the matcher works in. So for an offset `d`, an isotope enters a
+`+/-T` window when `|d + 1.00335/z| <= T`. At the default 0.3 Th that is:
+
+| Fragment charge | Isotope spacing | Offsets that admit the M+1 |
+|---|---|---|
+| 1+ | 1.0034 Th | -1.30 to -0.70 Th |
+| 2+ | 0.5017 Th | -0.80 to -0.20 Th |
+| 3+ | 0.3345 Th | -0.63 to -0.03 Th |
+
+The multiply charged fragments are the near case, and they are not rare: the Stellar
+reference library is 38% doubly and 16% triply charged products. A -0.25 Th offset - well
+inside what MARS was built to correct - already sends 18.5% of the 2+ matches to the M+1.
+
+An isotope match is the dangerous kind of wrong. Its residual is every bit as tight as a
+real match's, so the model trains on it happily, every accuracy figure in the QC report
+stays good, and the correction is a whole isotope spacing out. On the reference run with
+the library shifted to simulate a -0.75 Th offset, matching unanchored found 58,412
+fragments, none of them monoisotopic and 66% of them the M+1, and reported a 32.7%
+reduction in MAD while learning a +0.15 Th correction where the truth was -0.75.
+
+So before matching a run, MARS finds the coarse offset and centres the window there:
+
+1. **Shift scan.** Over a 0.01 Th grid spanning +/-1.3 Th, the shift that puts the most
+   library fragments within 0.15 Th of a peak. Ties go to the middle of the longest run of
+   tied shifts, and so downwards - the M+1 is always the higher of a tied pair, so the
+   lower candidate is the monoisotope.
+2. **Monoisotopic check.** While most singly charged fragments that hit at the shift show a
+   *larger* peak one isotope spacing below it, the shift steps down by that spacing. The
+   test is on intensity rather than presence because a fragment's M+0 outweighs its M+1
+   over most of the mass range, and on "most" rather than "all" because above roughly
+   1500 Da it stops doing so. Doubly charged fragments vote only when there are too few
+   singly charged ones: a unit-resolution trap often does not separate 0.5 Th spacing.
+3. **Refinement.** The median offset of the peaks the scan found, which answers past the
+   grid's resolution and past the flat top that a hit tolerance wider than the error
+   creates.
+4. **Gate.** The shift is applied only when it exceeds half the matching tolerance.
+   Below that the monoisotopic peak is already inside the window, and shifting would move
+   the window for no gain on every well-calibrated run.
+
+The shift moves the window, the neighbour-intensity sums and the `fragment_mz` feature -
+everything that describes *where a peak sits*. It does **not** move the label, which stays
+`observed_mz - theoretical_mz`, the whole error. So the offset travels inside the trained
+model and [Step 4](#step-4-correction) needs to know nothing about it. The model still
+learns whatever m/z dependence the offset has, exactly as before; the anchor supplies only
+what the model cannot, because the model never sees a peak the matcher did not hand it.
+
+This runs for absolute tolerances only. A ppm window is far narrower than any isotope
+spacing - 10 ppm at m/z 500 is 0.005 Th against 0.33 Th for a 3+ fragment - so an isotope
+cannot enter it, and a gross offset costs the matches outright and fails loudly.
+
+Each run in a cohort is anchored separately, because the window has to go where that run's
+peaks are. One model is still trained for the whole cohort, and nothing in it says which
+run a row came from, so MARS warns when the runs needed shifts spanning more than half a
+tolerance.
+
+`--mz-shift <Th>` matches at a stated offset instead of looking for one; `--no-anchor`
+turns the step off.
+
+### Checking that the window was in the right place
+
+The anchor can fail - on a run too sparse to sample, or an offset past where it looks - so
+the shape of the matched errors is checked afterwards, per run, against what a real
+fragment population looks like. Two statistics do it, and neither needs a reference run, an
+instrument model or a tolerance assumption:
+
+- **Mode offset.** How far the densest 5% of the window sits from the window's centre, as
+  a fraction of the half-window.
+- **Edge density.** Density in the outermost bin, as a fraction of the mode's. A real
+  population dies away well before the window edge; one whose true centre is outside is
+  still climbing when it gets there.
+
+Both are flagged above 0.4. On the reference cohort as acquired they read 0.08 and 0.13.
+With the library shifted to simulate instrument offsets of -0.25, -0.50 and -0.75 Th they
+read 0.78/0.83, 0.98/1.00 and 0.83/0.94 - so the thresholds sit a factor of three clear of
+a healthy run and a factor of two below the mildest failure. After anchoring, all three
+shifted runs read 0.08 and 0.13 - the unshifted run's own numbers.
+
+Peakedness - how far the mode stands above a flat distribution - was measured and
+discarded. It reads 2.13 on both the healthy run and the worst failure, because a
+distribution piling up against a window edge has a mode too. Unique precursors matched is
+likewise no use: it moved from 3,021 to 2,984 between a healthy run and one matching
+nothing but noise and isotopes, because a 0.3 Th window finds *something* for almost every
+precursor.
+
 ## Step 2: Feature extraction
 
 Each matched fragment becomes one row of up to 22 features. The order below is the model's

@@ -13,12 +13,19 @@ namespace MARS.Cli;
 
 public static class QcReport
 {
+    /// <param name="placementByFile">
+    /// Where each run's matched errors sat inside the window they were matched in, and the
+    /// coarse m/z shift that window was centred on. Both belong in the report rather than
+    /// only in the run log: a window in the wrong place produces accuracy figures as good
+    /// as a window in the right one, so the figures below cannot be read without them.
+    /// </param>
     public static void Write(
         string path,
         MzCalibrator calibrator,
         MatchStatistics matchStatistics,
         IReadOnlyList<string> inputFiles,
-        MatchOptions matchOptions)
+        MatchOptions matchOptions,
+        IReadOnlyDictionary<string, WindowPlacement>? placementByFile = null)
     {
         TrainingStatistics stats = calibrator.Statistics
             ?? throw new InvalidOperationException("Model carries no training statistics.");
@@ -35,6 +42,8 @@ public static class QcReport
         if (matchOptions.MaxIsolationWindowWidth is double width)
             text.AppendLine($"  Maximum isolation window: {width:F2} Th");
         text.AppendLine();
+
+        AppendWindowPlacement(text, inputFiles, placementByFile);
 
         text.AppendLine("Before Calibration:");
         AppendSummary(text, stats.Before, stats.BeforePpm);
@@ -229,6 +238,59 @@ public static class QcReport
         text.AppendLine($"  MAD delta m/z:    {summary.Mad:F4} Th");
         text.AppendLine($"  RMS delta m/z:    {summary.Rms:F4} Th");
         text.AppendLine($"  MAE delta m/z:    {summary.Mae:F4} Th");
+    }
+
+    /// <summary>
+    /// Where each run's window ended up, and whether its matched errors sat in it the way a
+    /// real fragment population would. Suspect runs are called out by name, because a
+    /// cohort's pooled figures will not show one bad run among good ones.
+    /// </summary>
+    private static void AppendWindowPlacement(
+        StringBuilder text,
+        IReadOnlyList<string> inputFiles,
+        IReadOnlyDictionary<string, WindowPlacement>? placementByFile)
+    {
+        if (placementByFile is null || placementByFile.Count == 0) return;
+
+        text.AppendLine("Matching window:");
+        foreach (string file in inputFiles)
+        {
+            if (!placementByFile.TryGetValue(file, out WindowPlacement? placement)) continue;
+
+            string name = Path.GetFileName(file);
+            string centre = placement.CentreTh != 0
+                ? $"centred at {placement.CentreTh:+0.000;-0.000} Th (m/z anchor)"
+                : "centred on the library m/z";
+
+            text.AppendLine($"  {name}: {centre}; {placement.Describe()}");
+        }
+
+        bool anySuspect = false;
+        foreach (WindowPlacement placement in placementByFile.Values)
+        {
+            if (placement.Suspect) anySuspect = true;
+        }
+
+        if (anySuspect)
+        {
+            text.AppendLine();
+            text.AppendLine(
+                "  WARNING: on at least one run above, the matched errors do not sit inside the");
+            text.AppendLine(
+                "  matching window the way a real fragment population does - the mode is far from");
+            text.AppendLine(
+                "  the window centre, or the distribution is still dense at the window edge. The");
+            text.AppendLine(
+                "  window is then not over the fragment peaks, and what was matched is noise or an");
+            text.AppendLine(
+                "  isotope of the fragment. An isotope match trains and reports exactly like a real");
+            text.AppendLine(
+                "  one, so every accuracy figure below will look normal regardless. Treat them as");
+            text.AppendLine(
+                "  unreliable until the matching window covers the real peak.");
+        }
+
+        text.AppendLine();
     }
 
     private static double Reduction(double before, double after) =>

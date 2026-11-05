@@ -354,6 +354,8 @@ mars qc --mzml-dir runs/ --library lib.blib --by-file
 | `--tolerance <Th>` | Fragment tolerance in Th (default 0.3, or from `--resolution`) |
 | `--tolerance-ppm <ppm>` | Fragment tolerance in ppm; overrides `--tolerance` |
 | `--min-intensity <n>` | Minimum peak intensity to match (default 500) |
+| `--mz-shift <Th>` | Match at this coarse m/z offset instead of finding it |
+| `--no-anchor` | Do not look for a coarse m/z offset before matching |
 | `--max-isolation-window <Th>` | Skip spectra with wider isolation windows |
 | `--output <path>` | Text report path (default `mars_qc_summary.txt`) |
 | `--html-report <path>` | Figures (default `mars_qc_report.html`, beside the text report) |
@@ -406,6 +408,8 @@ surface than one model per file.
 | `--tolerance <Th>` | 0.3 | Fragment tolerance in Th |
 | `--tolerance-ppm <ppm>` | - | Fragment tolerance in ppm; overrides `--tolerance` |
 | `--min-intensity <n>` | 500 | Minimum peak intensity to match |
+| `--mz-shift <Th>` | - | Match at this coarse m/z offset instead of finding it |
+| `--no-anchor` | - | Do not look for a coarse m/z offset before matching |
 | `--max-isolation-window <Th>` | - | Skip spectra with wider isolation windows |
 | `--rt-window <min>` | 0.083 | RT half-window around a `.blib` entry's library RT |
 | `--no-dedupe-library` | off | Keep transitions that repeat across replicates |
