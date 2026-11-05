@@ -62,6 +62,11 @@ Matching window:
   window centre (8 % of the half-window), edge density 13 % of the mode's
 ```
 
+On a ppm window the mode is reported in ppm, because a ppm window is a different width in Th
+at every m/z: each row is converted to its own error in ppm and judged against the one window
+those then share. The HTML report carries the same block, above the verdict, and turns it
+amber when any run is suspect.
+
 `centred at -0.757 Th (m/z anchor)` instead of `centred on the library m/z` means MARS found
 a coarse offset in this run and moved the window onto it. That is reported rather than
 warned about: the offset is a fact about the instrument, and finding it is what lets the rest
@@ -277,7 +282,10 @@ on either.
   corrections. See [spectral libraries](spectral-libraries.md).
 - **Whether the right peak was matched** - not from the accuracy figures, anyway. An isotope
   match has a residual as tight as a real one. The Matching window section above is what
-  answers this, and it is the reason that section exists.
+  answers this, and it is the reason that section exists - with one exception. On a ppm
+  window, an offset of almost exactly one isotope spacing puts the isotope dead centre, and
+  that section reads healthy too. See
+  [the algorithm doc](algorithm.md#anchoring-the-window-on-the-monoisotopic-peak).
 - **Whether the file is well-formed.** That is `mars verify`.
 - **Whether the correction generalizes.** The validation MAE in the summary is the only
   guard, and it is computed on rows from the same cohort.

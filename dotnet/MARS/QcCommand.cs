@@ -162,6 +162,7 @@ public static class QcCommand
         var matcher = new FragmentMatcher(library, matchOptions);
 
         var shiftByFile = new Dictionary<string, double>(mzmlFiles.Count);
+        var placementByFile = new Dictionary<string, WindowPlacement>(mzmlFiles.Count);
 
         foreach (string file in mzmlFiles)
         {
@@ -193,12 +194,18 @@ public static class QcCommand
 
             WindowPlacement placement = CalibrateCommand.CheckPlacement(
                 combined, matchOptions, rowsBefore, shift, Path.GetFileName(file));
+            placementByFile[Path.GetFileName(file)] = placement;
+
+            // Unconditionally, not only when it is suspect. A saved report that says nothing
+            // about the window cannot be told apart from one written before this check
+            // existed, and "the check ran and passed" is the thing a reader wants from it.
+            text.AppendLine($"{Path.GetFileName(file)}: matching window {placement.Describe()}");
             if (placement.Suspect)
             {
                 text.AppendLine(
                     $"{Path.GetFileName(file)}: WARNING - the matched errors do not sit in the "
-                    + $"window like a real fragment population ({placement.Describe()}). "
-                    + "The figures below are probably measured against the wrong peaks.");
+                    + "window like a real fragment population. The figures below are probably "
+                    + "measured against the wrong peaks.");
             }
 
             // Per-file numbers come from this file's slice of the shared table, so each
@@ -242,7 +249,8 @@ public static class QcCommand
                     : $"{matchOptions.MzToleranceTh:0.###} Th",
                 MarsInfo.Version,
                 Uncorrected(combined, resolution),
-                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th,
+                placementByFile);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 

@@ -59,7 +59,8 @@ public static class QcHtmlReport
         string toleranceDescription,
         string version,
         ErrorSummary? uncorrected = null,
-        ErrorScale? scale = null)
+        ErrorScale? scale = null,
+        IReadOnlyDictionary<string, WindowPlacement>? placementByFile = null)
     {
         scale ??= ErrorScale.Th;
 
@@ -84,6 +85,7 @@ public static class QcHtmlReport
             .Append(inputFiles.Count.ToString("N0", CultureInfo.InvariantCulture))
             .Append(inputFiles.Count == 1 ? " input file" : " input files").Append("</p>");
 
+        AppendWindowPlacement(html, placementByFile);
         AppendVerdict(html, statistics, uncorrected, data.CrossValidation, scale);
         AppendSummaryTables(
             html, statistics, uncorrected, matchStatistics, inputFiles, toleranceDescription, scale);
@@ -403,6 +405,58 @@ public static class QcHtmlReport
         html.Append("</div>");
     }
 
+    /// <summary>Where each run's matching window ended up, and whether it looks right.</summary>
+    /// <remarks>
+    /// Placed above the verdict and every figure because this is the one failure they cannot
+    /// show. A window that has drifted onto an isotope of the fragment produces residuals as
+    /// tight as a correct match, so the distribution, the heatmaps and the cross-validation
+    /// all read normally while the correction is a whole isotope spacing wrong. A reader who
+    /// scrolls no further than the verdict still sees it.
+    /// </remarks>
+    private static void AppendWindowPlacement(
+        StringBuilder html, IReadOnlyDictionary<string, WindowPlacement>? placementByFile)
+    {
+        if (placementByFile is null || placementByFile.Count == 0) return;
+
+        bool suspect = false;
+        foreach (WindowPlacement placement in placementByFile.Values)
+        {
+            if (placement.Suspect) suspect = true;
+        }
+
+        html.Append("<div class=\"verdict").Append(suspect ? " alert" : string.Empty).Append("\">");
+        html.Append("<p><strong>Matching window</strong></p>");
+
+        if (suspect)
+        {
+            html.Append("<p>The matched errors in at least one run below do not sit inside the ")
+                .Append("matching window the way a real fragment population does, so the window ")
+                .Append("is probably not over the monoisotopic peaks and what was matched is ")
+                .Append("noise or an isotope of the fragment. <strong>Treat every figure in this ")
+                .Append("report as unreliable.</strong> An isotope match trains and reports ")
+                .Append("exactly like a real one, so the accuracy figures will not show it.</p>");
+        }
+
+        html.Append("<ul class=\"files\">");
+        foreach (KeyValuePair<string, WindowPlacement> entry in placementByFile)
+        {
+            html.Append("<li>").Append(Svg.Escape(entry.Key)).Append(": ");
+
+            html.Append(entry.Value.CentreTh != 0
+                ? "centred at "
+                  + Svg.Escape(entry.Value.CentreTh.ToString(
+                      "+0.000;-0.000", CultureInfo.InvariantCulture))
+                  + " Th (m/z anchor); "
+                : "centred on the library m/z; ");
+
+            html.Append(Svg.Escape(entry.Value.Describe()));
+            if (entry.Value.Suspect) html.Append(" &mdash; <strong>suspect</strong>");
+            html.Append("</li>");
+        }
+
+        html.Append("</ul></div>");
+    }
+
     private static void Row(StringBuilder html, string label, string value) =>
         html.Append("<tr><td>").Append(Svg.Escape(label)).Append("</td><td class=\"num\">")
             .Append(Svg.Escape(value)).Append("</td></tr>");
@@ -501,6 +555,7 @@ public static class QcHtmlReport
           background: #f6f8fa; border: 1px solid var(--border); border-left: 3px solid var(--accent);
           border-radius: 4px; padding: 12px 14px; margin: 0 0 22px;
         }
+        .verdict.alert { background: #fff8e6; border-color: #e3c97e; border-left-color: #b8860b; }
         .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
         section { background: #f9fafb; border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; }

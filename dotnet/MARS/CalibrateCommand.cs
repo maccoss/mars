@@ -288,7 +288,8 @@ public static class CalibrateCommand
                 DescribeTolerance(matchOptions),
                 MarsInfo.Version,
                 uncorrected: null,
-                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th,
+                placementByFile);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 
@@ -352,19 +353,21 @@ public static class CalibrateCommand
         int rows = table.Count - firstRow;
         if (rows <= 0) return WindowPlacement.Measure(ReadOnlySpan<double>.Empty, 0, shift);
 
-        double halfWindow = options.MzToleranceTh;
-        if (options.TolerancePpm > 0)
-        {
-            // A ppm window is a different width at every m/z, so it is judged at the median
-            // of what this run actually matched.
-            var fragmentMz = new double[rows];
-            Array.Copy(table.Column(MarsFeature.FragmentMz).Items, firstRow, fragmentMz, 0, rows);
-            Array.Sort(fragmentMz);
-            halfWindow = options.TolerancePpm * 1e-6 * fragmentMz[rows / 2];
-        }
+        ReadOnlySpan<double> delta = table.DeltaMz.Items.AsSpan(firstRow, rows);
 
-        WindowPlacement placement = WindowPlacement.Measure(
-            table.DeltaMz.Items.AsSpan(firstRow, rows), halfWindow, shift);
+        // A ppm window is a different width in Th at every m/z, so each row is converted to
+        // its own error in ppm and judged against the one window they then share. Judging
+        // raw Th errors against a single representative width instead - the median of what
+        // this run matched, which is what this did first - measures most of the cohort
+        // against a window it was never matched in, and reads healthy on a distribution that
+        // fills every row's window edge to edge.
+        WindowPlacement placement = options.TolerancePpm > 0
+            ? WindowPlacement.MeasurePpm(
+                delta,
+                table.Column(MarsFeature.FragmentMz).Items.AsSpan(firstRow, rows),
+                options.TolerancePpm,
+                shift)
+            : WindowPlacement.Measure(delta, options.MzToleranceTh, shift);
 
         Log.Info($"  window placement: {placement.Describe()}");
         if (placement.Warning() is string warning) Log.Warn($"  {label}: {warning}");
@@ -392,10 +395,10 @@ public static class CalibrateCommand
 
         AnchorResult result = MonoisotopicAnchor.Estimate(source, library, matchOptions);
 
-        // Silent on the two outcomes that mean "nothing to do and nothing wrong": a ppm
-        // tolerance, where an isotope cannot enter the window at all, and an offset the
-        // window already covers. The run log is long enough without a line per file saying
-        // that a check passed.
+        // Silent on the two outcomes that mean "nothing for the anchor to do": a ppm
+        // tolerance, which it does not anchor (the MonoisotopicAnchor remarks describe the
+        // one isotope case that leaves uncaught), and an offset the window already covers.
+        // The run log is long enough without a line per file saying that a step was skipped.
         if (result.Outcome is AnchorOutcome.Applied or AnchorOutcome.TooFewTargets)
         {
             Log.Info(MonoisotopicAnchor.Describe(result, matchOptions));

@@ -141,10 +141,14 @@ public sealed class AnchorResult
 /// anchor the model cannot, because the model never sees a peak the matcher did not hand it.
 /// </para>
 /// <para>
-/// This runs only for absolute (Th) tolerances. A ppm window is far narrower than any
-/// isotope spacing - 10 ppm at m/z 500 is 0.005 Th against 0.33 Th for a 3+ fragment - so
-/// an isotope can never enter it, and a gross offset costs the matches outright and fails
-/// loudly. <see cref="WindowPlacement"/> covers that case.
+/// This runs only for absolute (Th) tolerances; automatic anchoring is not supported for a
+/// ppm window. A ppm window is far narrower than any isotope spacing - 10 ppm at m/z 500 is
+/// 0.005 Th against 0.33 Th for a 3+ fragment - so an offset that grows gradually costs the
+/// matches outright rather than drifting onto an isotope. But an offset within the window's
+/// half-width of a whole isotope spacing, -1.00335/z Th, puts a z+ fragment's M+1 exactly on
+/// the library m/z while its monoisotope sits outside, and those matches are tight and
+/// centred enough that <see cref="WindowPlacement"/> can pass them. Nothing in MARS catches
+/// that case; docs/algorithm.md says what it looks like and how to set the offset by hand.
 /// </para>
 /// </remarks>
 public static class MonoisotopicAnchor

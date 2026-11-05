@@ -28,8 +28,15 @@ New options on `calibrate` and `qc`:
 - `--mz-shift <Th>` matches at a stated offset instead of looking for one.
 - `--no-anchor` turns the step off.
 
-This runs for absolute (`--tolerance`) windows only. A ppm window is far narrower than any
-isotope spacing, so an isotope cannot enter it.
+This runs for absolute (`--tolerance`) windows only; automatic anchoring is not supported for
+ppm windows. A ppm window is far narrower than any isotope spacing, so an offset that grows
+gradually costs the matches rather than drifting onto an isotope. But an offset within the
+window of a whole isotope spacing - -1.00335/z Th - lands that charge's M+1 on the library
+m/z while the monoisotope sits outside, and MARS does not detect it: the matches are tight
+and centred, so the placement check below can pass them. `--mz-shift` works with
+`--tolerance-ppm` for an offset you know. The
+[algorithm doc](../docs/algorithm.md#anchoring-the-window-on-the-monoisotopic-peak) has the
+numbers.
 
 ### A check that the matching window was in the right place
 
@@ -40,7 +47,9 @@ flatly across the whole window because nothing in it was ever the fragment. Both
 appear in the run log and the QC report whether or not they are suspect.
 
 This is the backstop for an offset the anchor could not find, and it runs for ppm
-tolerances as well.
+tolerances as well. On a ppm window it judges each row against its own window, which is a
+different width in Th at every m/z. It cannot see the ppm isotope case above, because those
+matches sit centred in the window.
 
 ## Bug Fixes
 

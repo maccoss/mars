@@ -147,9 +147,23 @@ model and [Step 4](#step-4-correction) needs to know nothing about it. The model
 learns whatever m/z dependence the offset has, exactly as before; the anchor supplies only
 what the model cannot, because the model never sees a peak the matcher did not hand it.
 
-This runs for absolute tolerances only. A ppm window is far narrower than any isotope
-spacing - 10 ppm at m/z 500 is 0.005 Th against 0.33 Th for a 3+ fragment - so an isotope
-cannot enter it, and a gross offset costs the matches outright and fails loudly.
+This runs for absolute tolerances only. Automatic anchoring is not supported for a ppm
+window, and that leaves one case MARS does not catch.
+
+A ppm window is far narrower than any isotope spacing - 10 ppm at m/z 500 is +/-0.005 Th,
+against 0.33 Th between a 3+ fragment's isotopes - so an offset that grows gradually loses
+the monoisotope long before an isotope comes near, and costs the matches outright. The
+exception is an offset that sits almost exactly a whole isotope spacing below the library
+m/z. At -1.00335/z Th the M+1 of a z+ fragment lands on the library m/z, inside even the
+narrowest window, while its monoisotope sits outside: at 10 ppm and m/z 500, an offset
+within 0.005 Th of -0.502 Th does this to every 2+ fragment. At -1.003 Th it happens to
+every charge at once - the M+1 of a 1+ fragment, the M+2 of a 2+, the M+3 of a 3+.
+
+Those matches are as tight and as centred as real ones, so the placement check below can
+pass them and the accuracy figures look normal. A run in this state may give itself away by
+matching far fewer fragments than it should, or by matching mostly one fragment charge, but
+MARS checks neither. If a ppm run's offset could plausibly be near a whole isotope spacing,
+set it by hand with `--mz-shift`, which works with `--tolerance-ppm`.
 
 Each run in a cohort is anchored separately, because the window has to go where that run's
 peaks are. One model is still trained for the whole cohort, and nothing in it says which
