@@ -176,7 +176,26 @@ jobs:
           # and pwiz builds with TreatWarningsAsErrors, so those would become build errors.
           # This names three codes and leaves every other warning visible - and -v quiet does
           # not do it, which is worth recording because it looks like it should.
-          dotnet publish MARS/MARS.csproj "-warnAsMessage:CS1591;CA1859;IL3000"             -c Release -f net10.0 -r ${{ matrix.rid }}             --self-contained true             -p:PublishSingleFile=true             -p:DebugType=none             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             $sevenzip             -o publish/${{ matrix.rid }}
+          #
+          # TreatWarningsAsErrors=false is for pwiz's projects, not MARS's. pwiz sets it for
+          # itself in pwiz-sharp/Directory.Build.props, so anything it warns about fails this
+          # publish - including a restore-time NuGet advisory against a package pwiz pins,
+          # which is not this repository's to bump: the tree is cloned at the commit
+          # dotnet/pwiz-sharp.json names. Without this flag a release could not be cut over an
+          # advisory in third-party code, which is what four advisories against pwiz's
+          # System.Security.Cryptography.Xml 8.0.4 pin did on 2026-10-13.
+          #
+          # Nothing is suppressed - the audit still runs and still prints every advisory - and
+          # MARS's own projects keep warnings fatal, because dotnet/Directory.Build.props
+          # declares this a local property and sets it back to true. The CI workflow needs a
+          # second flag for the same effect because it passes -warnaserror; this does not.
+          #
+          # This does not let a vulnerable package into a release. MARS.Pwiz audits its whole
+          # package graph when pwiz is present - every version MARS resolves and ships, whoever
+          # declared it - and that audit stays fatal, so this publish fails if anything it
+          # would bundle has a known advisory. MARS.Pwiz.csproj overrides pwiz's 8.0.4 pin with
+          # a patched 10.0.x release; that is what lets this pass.
+          dotnet publish MARS/MARS.csproj "-warnAsMessage:CS1591;CA1859;IL3000"             -c Release -f net10.0 -r ${{ matrix.rid }}             --self-contained true             -p:PublishSingleFile=true             -p:DebugType=none             -p:TreatWarningsAsErrors=false             -p:PwizSharpDir="$GITHUB_WORKSPACE/pwiz/pwiz-sharp"             -p:IAgreeToVendorLicenses=true             $sevenzip             -o publish/${{ matrix.rid }}
 
       # Parquet.Net carries a native compression library, so the archive is a binary plus
       # that library rather than a lone executable.

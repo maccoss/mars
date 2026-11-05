@@ -44,6 +44,10 @@ public class ThreadCountTest
     [InlineData("--threads", "0")]
     [InlineData("--threads=-1", null)]
     [InlineData("--threads=-16", null)]
+    // The space form reaches the same check now that the parser reads a negative number as a
+    // value. It used to read -4 as another option, and the error was about a missing value
+    // rather than about the count the user actually typed.
+    [InlineData("--threads", "-4")]
     public void ACountBelowOneIsRefused(string first, string? second)
     {
         string[] options = second is null ? new[] { first } : new[] { first, second };
@@ -53,13 +57,15 @@ public class ThreadCountTest
     }
 
     /// <summary>
-    /// `--threads -4` is not a negative count to the parser, it is the option followed by
-    /// another option. Saying so beats reporting that --threads got the value 'true'.
+    /// `--threads` at the end of the line, or followed directly by another option, has no
+    /// value at all. Saying so beats reporting that --threads got the value 'true'.
     /// </summary>
-    [Fact]
-    public void AnOptionGivenNoValueSaysSo()
+    [Theory]
+    [InlineData("--threads")]
+    [InlineData("--threads", "--no-html-report")]
+    public void AnOptionGivenNoValueSaysSo(params string[] options)
     {
-        FormatException error = Assert.Throws<FormatException>(() => Resolve("--threads", "-4"));
+        FormatException error = Assert.Throws<FormatException>(() => Resolve(options));
         Assert.Contains("no value", error.Message, StringComparison.Ordinal);
     }
 

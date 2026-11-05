@@ -102,7 +102,21 @@ public sealed class FragmentMatcher
     /// <summary>
     /// Matches one spectrum. Returns the number of rows appended to <paramref name="table"/>.
     /// </summary>
-    public int MatchSpectrum(SpectrumRecord spectrum, TemperatureSet? temperatures, MatchTable table)
+    /// <param name="mzShift">
+    /// Coarse m/z offset of this run, in Th, from <see cref="MonoisotopicAnchor"/>. The window
+    /// is centred on the library m/z plus this, so that a run whose peaks sit a whole isotope
+    /// spacing away from where the library puts them is still matched on its monoisotopic
+    /// peak. Zero - the default, and what a well-calibrated run gets - leaves every value in
+    /// this method bit-identical to a build that never knew about the shift.
+    /// </param>
+    /// <remarks>
+    /// The shift moves the window and the features that describe where a peak sits. It does
+    /// NOT move the label: <see cref="MatchTable.DeltaMz"/> stays observed minus library m/z,
+    /// the whole error. So the shift travels inside the trained model and the correction path
+    /// never needs to know it happened.
+    /// </remarks>
+    public int MatchSpectrum(
+        SpectrumRecord spectrum, TemperatureSet? temperatures, MatchTable table, double mzShift = 0)
     {
         Statistics.SpectraSeen++;
 
@@ -158,12 +172,17 @@ public sealed class FragmentMatcher
             {
                 double expectedMz = _library.FragmentMz[f];
                 if (expectedMz <= 0) continue;
-                if (expectedMz < lowestUsableMz || expectedMz > highestUsableMz) continue;
+
+                // Where this fragment's peak is expected to have landed, which is what the
+                // window, the neighbour sums and the fragment_mz feature are all about. The
+                // label below is the only thing measured against the library value itself.
+                double searchMz = expectedMz + mzShift;
+                if (searchMz < lowestUsableMz || searchMz > highestUsableMz) continue;
 
                 Statistics.CandidateFragmentsConsidered++;
 
                 if (!PeakSearch.TryFindMostIntensePeak(
-                        expectedMz, mz, intensity,
+                        searchMz, mz, intensity,
                         _options.MzToleranceTh, _options.MinIntensity, _options.TolerancePpm,
                         out double observedMz, out double observedIntensity))
                 {
@@ -171,7 +190,11 @@ public sealed class FragmentMatcher
                 }
 
                 table.Set(MarsFeature.PrecursorMz, spectrum.PrecursorMzCenter);
-                table.Set(MarsFeature.FragmentMz, expectedMz);
+
+                // The observed position, not the library one. At correction time this feature
+                // is the peak's own m/z, so this is the closer match to what the model will be
+                // asked at inference - and with no shift the two are the same value as before.
+                table.Set(MarsFeature.FragmentMz, searchMz);
                 table.Set(MarsFeature.LogTic, logTic);
                 table.Set(MarsFeature.LogIntensity, Math.Log10(Math.Max(observedIntensity, 1.0)));
                 table.Set(MarsFeature.AbsoluteTime, spectrum.AbsoluteTime);
@@ -197,7 +220,7 @@ public sealed class FragmentMatcher
 
                         (double low, double high) = MarsFeatures.NeighborWindows[w];
                         neighbors[w] = PeakSearch.SumIntensityInRange(
-                            mz, intensity, expectedMz + low, expectedMz + high) * injectionTime;
+                            mz, intensity, searchMz + low, searchMz + high) * injectionTime;
                     }
 
                     for (int w = 0; w < neighbors.Length; w++)

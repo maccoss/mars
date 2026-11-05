@@ -65,7 +65,7 @@ a plain `dotnet build`/`dotnet test` with no pwiz anywhere has to keep working.
 dotnet build -c Release -p:PwizSharpDir=<path>/pwiz/pwiz-sharp -p:IAgreeToVendorLicenses=true
 ```
 
-Three things that are not obvious:
+Four things that are not obvious:
 
 *   It needs the **full** pwiz working tree, not a sparse checkout of `pwiz-sharp/`. Bruker
     reads its archives from `pwiz_aux` and pulls VC90 CRT files from `pwiz_tools/Shared/Lib`.
@@ -75,6 +75,18 @@ Three things that are not obvious:
 *   `dotnet/Directory.Build.rsp` carries a `WarningsNotAsErrors` that a single-file publish
     needs. It repeats pwiz's own list because a global property replaces rather than extends
     what a project sets; keep it in step with `pwiz-sharp/Directory.Build.props`.
+*   pwiz pins NuGet packages MARS cannot change, so an advisory against one fails pwiz's
+    restore. The vendor workflows pass `-p:TreatWarningsAsErrors=false` (and, where they
+    also pass `-warnaserror`, `-warnnotaserror:NU1903`) to stop pwiz's promotion, and
+    `dotnet/Directory.Build.props` fences that with `TreatAsLocalProperty` so MARS's own
+    projects keep warnings fatal. What MARS **ships** is guarded separately:
+    `MARS.Pwiz.csproj` sets `NuGetAuditMode` to `all` when pwiz is present, so any vulnerable
+    version that reaches the binary fails the build whoever declared it, and it overrides
+    pwiz's stale `System.Security.Cryptography.Xml` 8.0.4 pin with a patched 10.0.x. To fix
+    a new advisory, override the package there with a patched version - do not relax the
+    whole-graph audit, and do not reach for `-p:NuGetAudit=false`, which stops the audit
+    rather than its promotion. `dotnet list package --vulnerable` is no substitute: it does
+    not see packages that arrive through a project reference.
 
 The scripts under `dotnet/scripts/` are Python. `parity_digest.py` is standard library only;
 the two comparators need `pip install -r dotnet/scripts/requirements.txt`. There is no package

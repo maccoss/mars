@@ -81,6 +81,13 @@ public static class CalibrateCommand
 
         int minTrainingRows = args.Int("min-training-rows") ?? 1000;
         bool noRecalibrate = args.Flag("no-recalibrate");
+
+        // The anchor decides for itself whether a run needs a shift and declines on every
+        // well-calibrated one, so these exist for the case where it is wrong rather than as
+        // knobs to reach for: --mz-shift to say what the offset is when the scan cannot find
+        // it, --no-anchor to reproduce a build that never had one.
+        bool noAnchor = args.Flag("no-anchor");
+        double? forcedShift = args.Double("mz-shift");
         string? temperatureDirectory = args.String("temperature-dir");
 
 
@@ -177,6 +184,8 @@ public static class CalibrateCommand
         MarsFeature[] collect = FragmentMatcher.CollectedFeatures(injectionTimeUse, anyRfa2, anyRfc2);
         var table = new MatchTable(collect, keepDetail: keepDetail);
         var matcher = new FragmentMatcher(library, matchOptions);
+        var shiftByFile = new Dictionary<string, double>(mzmlFiles.Count);
+        var placementByFile = new Dictionary<string, WindowPlacement>(mzmlFiles.Count);
 
         foreach (string file in mzmlFiles)
         {
@@ -184,16 +193,23 @@ public static class CalibrateCommand
             ISpectrumSource source = sourceByFile[file];
             temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
 
-            long before = table.Count;
+            double shift = ResolveShift(source, library, matchOptions, forcedShift, noAnchor);
+            shiftByFile[file] = shift;
+
+            int before = table.Count;
             long spectra = 0;
             foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
             {
-                matcher.MatchSpectrum(spectrum, temperatures, table);
+                matcher.MatchSpectrum(spectrum, temperatures, table, shift);
                 spectra++;
             }
 
             Log.Info($"  {spectra:N0} MS2 spectra, {table.Count - before:N0} fragment matches");
+            placementByFile[file] =
+                CheckPlacement(table, matchOptions, before, shift, Path.GetFileName(file));
         }
+
+        WarnIfShiftsDisagree(shiftByFile, matchOptions);
 
         Log.Info($"Total matches: {table.Count:N0} from {matcher.Statistics.SpectraSeen:N0} spectra");
         CheckTolerance(table, matchOptions);
@@ -257,7 +273,8 @@ public static class CalibrateCommand
         MarsModelIo.Save(calibrator, modelPath);
         Log.Info($"Saved model to {modelPath}");
 
-        QcReport.Write(reportPath, calibrator, matcher.Statistics, mzmlFiles, matchOptions);
+        QcReport.Write(
+            reportPath, calibrator, matcher.Statistics, mzmlFiles, matchOptions, placementByFile);
         Log.Info($"Wrote QC report to {reportPath}");
 
         if (!noHtmlReport)
@@ -271,7 +288,8 @@ public static class CalibrateCommand
                 DescribeTolerance(matchOptions),
                 MarsInfo.Version,
                 uncorrected: null,
-                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th,
+                placementByFile);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 
@@ -318,6 +336,116 @@ public static class CalibrateCommand
         double median = sample[sample.Length / 2];
 
         ResolutionMode.WarnIfToleranceLooksTooWide(options, mad, median, Log.Warn);
+    }
+
+    /// <summary>
+    /// Checks where one run's matched errors sit inside the window they were matched in, and
+    /// warns when that is not where a real fragment population would put them.
+    /// </summary>
+    /// <remarks>
+    /// Per run rather than per cohort, for two reasons: each run is matched at its own coarse
+    /// shift, so only its own rows share a window centre; and one bad run in a good cohort
+    /// would otherwise be diluted into a pooled distribution that still looks healthy.
+    /// </remarks>
+    internal static WindowPlacement CheckPlacement(
+        MatchTable table, MatchOptions options, int firstRow, double shift, string label)
+    {
+        int rows = table.Count - firstRow;
+        if (rows <= 0) return WindowPlacement.Measure(ReadOnlySpan<double>.Empty, 0, shift);
+
+        ReadOnlySpan<double> delta = table.DeltaMz.Items.AsSpan(firstRow, rows);
+
+        // A ppm window is a different width in Th at every m/z, so each row is converted to
+        // its own error in ppm and judged against the one window they then share. Judging
+        // raw Th errors against a single representative width instead - the median of what
+        // this run matched, which is what this did first - measures most of the cohort
+        // against a window it was never matched in, and reads healthy on a distribution that
+        // fills every row's window edge to edge.
+        WindowPlacement placement = options.TolerancePpm > 0
+            ? WindowPlacement.MeasurePpm(
+                delta,
+                table.Column(MarsFeature.FragmentMz).Items.AsSpan(firstRow, rows),
+                options.TolerancePpm,
+                shift)
+            : WindowPlacement.Measure(delta, options.MzToleranceTh, shift);
+
+        Log.Info($"  window placement: {placement.Describe()}");
+        if (placement.Warning() is string warning) Log.Warn($"  {label}: {warning}");
+        return placement;
+    }
+
+    /// <summary>
+    /// The coarse m/z shift to match one run at: whatever was forced on the command line,
+    /// else whatever <see cref="MonoisotopicAnchor"/> finds, else none.
+    /// </summary>
+    internal static double ResolveShift(
+        ISpectrumSource source,
+        SpectralLibrary library,
+        MatchOptions matchOptions,
+        double? forcedShift,
+        bool noAnchor)
+    {
+        if (forcedShift is double forced)
+        {
+            Log.Info($"  m/z anchor: using --mz-shift {forced:+0.000;-0.000} Th");
+            return forced;
+        }
+
+        if (noAnchor) return 0;
+
+        AnchorResult result = MonoisotopicAnchor.Estimate(source, library, matchOptions);
+
+        // Silent on the two outcomes that mean "nothing for the anchor to do": a ppm
+        // tolerance, which it does not anchor (the MonoisotopicAnchor remarks describe the
+        // one isotope case that leaves uncaught), and an offset the window already covers.
+        // The run log is long enough without a line per file saying that a step was skipped.
+        if (result.Outcome is AnchorOutcome.Applied or AnchorOutcome.TooFewTargets)
+        {
+            Log.Info(MonoisotopicAnchor.Describe(result, matchOptions));
+        }
+
+        if (result.Outcome == AnchorOutcome.TooFewTargets)
+        {
+            Log.Warn(
+                "  the m/z anchor could not sample enough fragment peaks to tell whether this "
+                + "run's peaks are where the library puts them. If the matches below look thin, "
+                + "suspect the instrument's calibration before the library.");
+        }
+
+        return result.ShiftTh;
+    }
+
+    /// <summary>
+    /// Warns when the runs in a cohort needed materially different shifts.
+    /// </summary>
+    /// <remarks>
+    /// Each run is matched at its own shift, which is right: the window has to go where that
+    /// run's peaks are. But one model is trained for the whole cohort and has no feature
+    /// saying which file a row came from, so it can only carry a per-run offset through
+    /// whatever else separates the runs - acquisition time, or precursor range in a GPF
+    /// cohort. That works for the files it was trained on and is a guess for any other.
+    /// </remarks>
+    internal static void WarnIfShiftsDisagree(
+        IReadOnlyDictionary<string, double> shiftByFile, MatchOptions options)
+    {
+        if (shiftByFile.Count < 2) return;
+
+        double low = double.MaxValue, high = double.MinValue;
+        foreach (double shift in shiftByFile.Values)
+        {
+            low = Math.Min(low, shift);
+            high = Math.Max(high, shift);
+        }
+
+        double spread = high - low;
+        if (spread <= 0.5 * options.MzToleranceTh) return;
+
+        Log.Warn(
+            $"  WARNING: the runs in this cohort needed m/z shifts spanning {spread:0.###} Th "
+            + $"({low:+0.000;-0.000} to {high:+0.000;-0.000}). Each was matched at its own, so the "
+            + "training rows are right, but one model is fitted to the whole cohort and nothing in "
+            + "it says which run a peak came from. Calibrate these runs separately unless something "
+            + "else already separates them.");
     }
     /// <summary>
     /// Whether ion injection time is worth using as a feature.
@@ -531,6 +659,9 @@ public static class CalibrateCommand
                   --min-intensity <n>    Minimum peak intensity to match (default 500)
                   --max-isolation-window <Th>
                                          Skip spectra with wider isolation windows
+                  --mz-shift <Th>        Match at this coarse m/z offset instead of
+                                         finding it (skips the monoisotopic anchor)
+                  --no-anchor            Do not look for a coarse m/z offset at all
                   --rt-window <min>      RT half-window for blib entries (default 0.083)
                   --no-dedupe-library    Keep transitions repeated across replicates
 

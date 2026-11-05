@@ -44,6 +44,9 @@ public static class QcCommand
                       --min-intensity <n>    Minimum peak intensity (default 500)
                       --max-isolation-window <Th>
                                              Skip wider isolation windows
+                      --mz-shift <Th>        Match at this coarse m/z offset instead
+                                             of finding it
+                      --no-anchor            Do not look for a coarse m/z offset
                       --temperature-dir <d>  Directory of RFA2-/RFC2- temperature CSVs
                       --output <path>        Report path (default mars_qc_summary.txt)
                       --html-report <path>   Where to write the figures (default
@@ -75,6 +78,10 @@ public static class QcCommand
             MaxIsolationWindowWidth = args.Double("max-isolation-window"),
         };
 
+        // Read here rather than at the matching loop: an option has to have been asked for
+        // before the unknown-option check runs, or it is reported as a typo.
+        bool noAnchor = args.Flag("no-anchor");
+        double? forcedShift = args.Double("mz-shift");
 
 
         string reportPath = args.String("output") ?? "mars_qc_summary.txt";
@@ -154,6 +161,9 @@ public static class QcCommand
         var combined = new MatchTable(collect, keepDetail: !noHtmlReport);
         var matcher = new FragmentMatcher(library, matchOptions);
 
+        var shiftByFile = new Dictionary<string, double>(mzmlFiles.Count);
+        var placementByFile = new Dictionary<string, WindowPlacement>(mzmlFiles.Count);
+
         foreach (string file in mzmlFiles)
         {
             ISpectrumSource source = sourceByFile[file];
@@ -161,10 +171,42 @@ public static class QcCommand
             temperatureByFile.TryGetValue(file, out TemperatureSet? temperatures);
 
             Log.Info($"Matching: {Path.GetFileName(file)}");
+
+            // QC anchors for the same reason calibrate does, and reports the error it finds
+            // against the library all the same. The shift only decides which peak is the
+            // fragment; the error reported below is still the whole distance from the library
+            // m/z to it. Without this, a badly offset run reports the tight, small error of
+            // an isotope it mistook for the fragment - which is the opposite of what a report
+            // on mass accuracy is for.
+            double shift = CalibrateCommand.ResolveShift(
+                source, library, matchOptions, forcedShift, noAnchor);
+            shiftByFile[file] = shift;
+            if (shift != 0)
+            {
+                text.AppendLine(
+                    $"{Path.GetFileName(file)}: matched at an m/z offset of {shift:+0.000;-0.000} Th");
+            }
+
             foreach (SpectrumRecord spectrum in source.ReadSpectra(msLevel: 2))
-                matcher.MatchSpectrum(spectrum, temperatures, combined);
+                matcher.MatchSpectrum(spectrum, temperatures, combined, shift);
 
             Log.Info($"  {combined.Count - rowsBefore:N0} fragment matches");
+
+            WindowPlacement placement = CalibrateCommand.CheckPlacement(
+                combined, matchOptions, rowsBefore, shift, Path.GetFileName(file));
+            placementByFile[Path.GetFileName(file)] = placement;
+
+            // Unconditionally, not only when it is suspect. A saved report that says nothing
+            // about the window cannot be told apart from one written before this check
+            // existed, and "the check ran and passed" is the thing a reader wants from it.
+            text.AppendLine($"{Path.GetFileName(file)}: matching window {placement.Describe()}");
+            if (placement.Suspect)
+            {
+                text.AppendLine(
+                    $"{Path.GetFileName(file)}: WARNING - the matched errors do not sit in the "
+                    + "window like a real fragment population. The figures below are probably "
+                    + "measured against the wrong peaks.");
+            }
 
             // Per-file numbers come from this file's slice of the shared table, so each
             // spectrum is still matched exactly once.
@@ -176,6 +218,7 @@ public static class QcCommand
             }
         }
 
+        CalibrateCommand.WarnIfShiftsDisagree(shiftByFile, matchOptions);
         CalibrateCommand.CheckTolerance(combined, matchOptions);
 
         if (combined.Count == 0)
@@ -206,7 +249,8 @@ public static class QcCommand
                     : $"{matchOptions.MzToleranceTh:0.###} Th",
                 MarsInfo.Version,
                 Uncorrected(combined, resolution),
-                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th);
+                resolution.ReportInPpm ? ErrorScale.Ppm : ErrorScale.Th,
+                placementByFile);
             Log.Info($"Wrote QC figures to {htmlReportPath}");
         }
 

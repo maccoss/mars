@@ -29,6 +29,30 @@
     <DefineConstants>$(DefineConstants);MARS_NO_PWIZ</DefineConstants>
   </PropertyGroup>
 
+  <!--
+    With pwiz present, audit this project's WHOLE package graph rather than only its direct
+    references - which is the guard that keeps the vendor builds honest.
+
+    Those builds turn off pwiz's own promotion of advisories to errors, because pwiz pins
+    packages MARS cannot change. That would otherwise let any advisory against anything pwiz
+    brings in ship without a word. Everything pwiz brings in reaches MARS through this project,
+    so auditing its full graph checks the versions MARS actually resolves and ships - after
+    any override below - and MARS's own projects still treat an advisory as an error. A
+    vulnerable package that reaches the binary therefore fails the build, whichever project
+    declared it.
+
+    It is this, rather than listing vulnerable packages after the build, because that listing
+    does not see a package that arrives through a project reference: with the override below
+    removed, MARS resolved 8.0.4 and the listing still reported nothing. This restore audit
+    does see it.
+
+    Only with pwiz present. The plain build keeps "direct", for the reason given in
+    Directory.Build.props.
+  -->
+  <PropertyGroup Condition="'$(PwizAvailable)' == 'true'">
+    <NuGetAuditMode>all</NuGetAuditMode>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(PwizSciexAvailable)' == 'true'">
     <DefineConstants>$(DefineConstants);MARS_SCIEX</DefineConstants>
   </PropertyGroup>
@@ -93,6 +117,32 @@
       <OutputItemType>Content</OutputItemType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </ProjectReference>
+  </ItemGroup>
+
+  <!--
+    Overrides the System.Security.Cryptography.Xml the Sciex reader brings in, so that what
+    MARS ships is a patched release.
+
+    pwiz's Sciex.csproj pins 8.0.4: a .NET 8-line version left over from before pwiz-sharp
+    moved to .NET 10, whose retarget changed the target framework but not these explicit
+    package versions. Four advisories were published against it on 2026-10-13 - CVE-2026-96958,
+    96959, 96960 and 96222 - and the DLL goes into every Windows release of MARS, because those
+    carry the Sciex reader.
+
+    MARS cannot change pwiz's pin: the tree is cloned at the commit dotnet/pwiz-sharp.json
+    names. It does decide what goes into its own binary. A direct reference here is nearer to
+    MARS than pwiz's transitive one, so NuGet resolves this version for everything MARS builds
+    and publishes. pwiz's own project still declares 8.0.4 and its restore still reports the
+    advisories; the vendor builds stop that report from being fatal, and a check after the
+    build fails if anything MARS actually ships has a known advisory - including this, should
+    the override ever stop winning.
+
+    10.0.x because MARS and pwiz-sharp are both net10.0 and that is the matching line. 8.0.5
+    fixes the same advisories but would carry the stale pin forward. Remove this when pwiz
+    moves its own pin to a patched 10.0.x release.
+  -->
+  <ItemGroup Condition="'$(PwizSciexAvailable)' == 'true'">
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>

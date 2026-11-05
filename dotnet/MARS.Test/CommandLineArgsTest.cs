@@ -11,6 +11,47 @@ namespace MARS.Test;
 
 public class CommandLineArgsTest
 {
+    // Nearly every real m/z offset is negative, so --mz-shift -0.75 is the form the docs
+    // show and the form anyone will type. It used to parse as two options - --mz-shift with
+    // no value, and one called 0.75 - which failed with "Unknown option --0.75".
+    [Theory]
+    [InlineData("-0.75")]
+    [InlineData("-0.5")]
+    [InlineData("-1")]
+    [InlineData("-1.5e-3")]
+    [InlineData("-.25")]
+    public void ANegativeNumberIsAValueNotTheNextOption(string text)
+    {
+        CommandLineArgs args = CommandLineArgs.Parse(new[] { "calibrate", "--mz-shift", text });
+
+        Assert.Equal(double.Parse(text, System.Globalization.CultureInfo.InvariantCulture),
+            args.Double("mz-shift"));
+        Assert.Empty(args.UnknownOptions());
+    }
+
+    [Fact]
+    public void TheEqualsFormStillWorksForANegativeNumber()
+    {
+        CommandLineArgs args = CommandLineArgs.Parse(new[] { "calibrate", "--mz-shift=-0.75" });
+
+        Assert.Equal(-0.75, args.Double("mz-shift"));
+        Assert.Empty(args.UnknownOptions());
+    }
+
+    // The point of the rule is that a NUMBER after an option is its value. A flag followed
+    // by a real option must still read as two options, or --no-anchor would swallow the one
+    // after it.
+    [Fact]
+    public void AnOptionAfterAFlagIsStillAnOption()
+    {
+        CommandLineArgs args = CommandLineArgs.Parse(
+            new[] { "calibrate", "--no-anchor", "--tolerance", "0.3" });
+
+        Assert.True(args.Flag("no-anchor"));
+        Assert.Equal(0.3, args.Double("tolerance"));
+        Assert.Empty(args.UnknownOptions());
+    }
+
     [Fact]
     public void AnOptionNoCommandAsksAboutIsUnknown()
     {

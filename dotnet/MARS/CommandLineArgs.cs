@@ -59,7 +59,7 @@ public sealed class CommandLineArgs
                 value = name[(equals + 1)..];
                 name = name[..equals];
             }
-            else if (i + 1 < args.Length && !args[i + 1].StartsWith("-", StringComparison.Ordinal))
+            else if (i + 1 < args.Length && LooksLikeAValue(args[i + 1]))
             {
                 value = args[++i];
             }
@@ -75,6 +75,21 @@ public sealed class CommandLineArgs
 
         return parsed;
     }
+
+    /// <summary>
+    /// Whether the token after an option is that option's value rather than the next option.
+    /// </summary>
+    /// <remarks>
+    /// Anything that does not start with '-' is a value, and so is a negative number.
+    /// Without the second half, <c>--mz-shift -0.75</c> reads as two options: --mz-shift
+    /// with no value, and an option called 0.75. Nearly every real m/z offset is negative,
+    /// so that made the documented form of the option unusable - only <c>--mz-shift=-0.75</c>
+    /// worked - and left a confusing "Unknown option --0.75" behind. MARS has no
+    /// single-dash short options, so there is nothing here for a number to shadow.
+    /// </remarks>
+    private static bool LooksLikeAValue(string token) =>
+        !token.StartsWith("-", StringComparison.Ordinal) ||
+        double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
 
     public bool Has(params string[] names)
     {

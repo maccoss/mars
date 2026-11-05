@@ -105,3 +105,13 @@ formats, or about any library reader other than the PRISM CSV path - and it cann
 because extending it would mean running the Python implementation, which is what a tag is for.
 
 It is a regression guard on the matcher and the features, not a proof of correctness.
+
+It also exercises only the unshifted matching path. MARS anchors its matching window on the
+coarse m/z offset of each run before matching it (see
+[the algorithm doc](../docs/algorithm.md#anchoring-the-window-on-the-monoisotopic-peak)), and
+the reference cohort is well enough calibrated that the anchor declines to shift anything -
+which is why the digest still matches column for column. Nothing here would notice a change
+to the anchor itself. `MonoisotopicAnchorTest` covers that, against synthetic runs whose
+offset is known, and the shifted-library experiment described in the release notes covers it
+against this cohort. Neither is a parity check, because the Python implementation had no
+such step to be checked against.

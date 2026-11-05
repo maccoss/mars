@@ -377,6 +377,8 @@ failure.
 | `--tolerance` | 0.3 Th | Matching tolerance; use `--tolerance-ppm` for Orbitrap/Astral |
 | `--min-intensity` | 500 | Minimum peak intensity usable as a training row |
 | `--max-isolation-window` | - | Leave wider isolation windows uncorrected |
+| `--mz-shift` | - | Match at a stated coarse m/z offset instead of finding it |
+| `--no-anchor` | - | Do not look for a coarse m/z offset before matching |
 | `--temperature-dir` | - | RF temperature logs (`RFA2-*.csv`, `RFC2-*.csv`) |
 | `--threads` | `auto` | Worker threads; `auto` is one per logical processor, and the run reports which it used |
 | `--on-reorder` | `clamp` | What to do if a correction would unsort the m/z array |
