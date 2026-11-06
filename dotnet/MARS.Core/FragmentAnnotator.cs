@@ -51,6 +51,10 @@ public static class FragmentAnnotator
         var assigned = 0;
         for (var i = 0; i < mz.Length; i++)
         {
+            // A NaN difference fails every comparison, so the tolerance test below would let
+            // a NaN peak through as named. It stays unassigned and counts against the caller.
+            if (!double.IsFinite(mz[i])) continue;
+
             int nearest = Nearest(candidates, mz[i]);
             (double candidateMz, char ionType, int ionNumber, int charge) = candidates[nearest];
             if (Math.Abs(mz[i] - candidateMz) > candidateMz * tolerancePpm * 1e-6) continue;
@@ -64,7 +68,7 @@ public static class FragmentAnnotator
 
     /// <summary>
     /// Every b and y ion of the peptide, sorted by m/z, or null when a residue has no known
-    /// mass.
+    /// or no finite mass.
     /// </summary>
     private static List<(double, char, int, int)>? Candidates(
         string sequence,
@@ -88,6 +92,12 @@ public static class FragmentAnnotator
             {
                 int index = position - 1;
                 if (index >= 0 && index < n) residues[index] += mass;
+            }
+
+            // A non-finite delta makes non-finite candidates, which no tolerance test rejects.
+            foreach (double residue in residues)
+            {
+                if (!double.IsFinite(residue)) return null;
             }
         }
 

@@ -64,6 +64,30 @@ public sealed class BlibLibraryReaderTest
     }
 
     [Fact]
+    public void DoesNotNameANonFinitePeakOrCandidate()
+    {
+        // NaN fails every comparison, including the one that rejects a peak outside the
+        // tolerance, so without a guard a library of NaN peaks would pass as theoretical.
+        const string sequence = "PEPTIDEK";
+        double y4 = PeptideMass.FragmentMz(sequence, 'y', 4, 1);
+        double[] mz = { double.NaN, double.PositiveInfinity, double.NegativeInfinity, y4 };
+
+        var ions = new (char, int, int)[mz.Length];
+        Assert.Equal(1, FragmentAnnotator.Annotate(sequence, null, 1, mz, 2.0, ions));
+        Assert.Equal(FragmentAnnotator.Unassigned, ions[0]);
+        Assert.Equal(FragmentAnnotator.Unassigned, ions[1]);
+        Assert.Equal(FragmentAnnotator.Unassigned, ions[2]);
+        Assert.Equal(('y', 4, 1), ions[3]);
+
+        // A non-finite modification delta makes non-finite candidates; inf > inf is false too.
+        double[] finite = { y4, 1000.0 };
+        var infinite = new List<(int, double)> { (6, double.PositiveInfinity) };
+        Assert.Equal(0, FragmentAnnotator.Annotate(sequence, infinite, 1, finite, 2.0, ions));
+        var nan = new List<(int, double)> { (6, double.NaN) };
+        Assert.Equal(0, FragmentAnnotator.Annotate(sequence, nan, 1, finite, 2.0, ions));
+    }
+
+    [Fact]
     public void ReadsAnOspreyResultWithoutPeakAnnotations()
     {
         var log = new List<string>();
