@@ -46,8 +46,9 @@ already well-calibrated Astral run, under 2%. See [algorithm.md](algorithm.md#re
 
 **Which library should I use?**
 A Skyline PRISM report if you have one, because its `Product Mz` is genuinely theoretical
-and it carries real per-peptide elution windows. A `.blib` without peak annotations will be
-refused outright, and MARS will say so. See [spectral-libraries.md](spectral-libraries.md).
+and it carries real per-peptide elution windows. An Osprey result `.blib` also works, with
+each run's elution boundaries. A `.blib` of observed spectra without peak annotations will be
+refused, and MARS will say so. See [spectral-libraries.md](spectral-libraries.md).
 
 **Is the output reproducible?**
 Identical input gives a bit-identical model and bit-identical decoded output at any thread

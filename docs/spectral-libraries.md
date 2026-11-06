@@ -11,7 +11,7 @@ Four sources are supported, and they differ in how well they satisfy that requir
 |---|---|---|---|
 | Skyline PRISM report | `--prism-report` | Theoretical | Recommended. `.csv` or `.parquet`. Carries per-replicate RT windows. |
 | DIA-NN library | `--library report-lib.parquet` | Theoretical | Needs `report.parquet` for RT windows. |
-| BiblioSpec `.blib` | `--library lib.blib` | Recomputed from sequence | Requires peak annotations. |
+| BiblioSpec `.blib` | `--library lib.blib` | Recomputed from sequence | Requires peak annotations, or theoretical peak m/z. Reads Osprey results. |
 | PRISM report as `--library` | `--library report.csv` | Theoretical | Same reader as `--prism-report`. |
 
 `--prism-csv` is still accepted and does the same thing. The option was named before the report
@@ -149,14 +149,60 @@ fragment ion an unannotated peak is, so its only available m/z is the observed o
 with hundreds of unannotated peaks per spectrum would swamp the real fragments with rows
 whose label is meaningless.
 
-If a library has no annotations at all, MARS refuses it and names the alternatives rather
-than producing a model from it. `example-data/Stellar-HeLa-GPF.blib` is such a library: its
-`RefSpectraPeakAnnotations` table is empty, and running the Python implementation against it
-yields 7.9M pseudo-matches from a single file and a model that reduces the spread by 2.2%.
+### Libraries with no annotations at all
 
-`--rt-window` sets the half-width of the RT window placed around each entry's library RT
-(default 0.083 min, five seconds). A PRISM report's real elution windows are better when
-available.
+A library with no annotations at all is not refused on sight. Whether it can be used depends
+on what its peaks are, and MARS finds out by naming every peak from its m/z: each one is
+compared against the b and y ions computed from the sequence and the `Modifications` table, at
+charges up to the precursor's (at most 3), and named after the nearest ion within 2 ppm.
+
+- **Theoretical m/z.** A peak that was computed rather than measured lands on its ion to well
+  under a ppm. When at least 80% of the library's peaks are named this way, the library is
+  read as if it had carried those annotations: named peaks are kept and their m/z recomputed
+  as usual, and the rest are skipped. The log says how many were named.
+- **Observed m/z.** A measured peak almost never lands within 2 ppm of its ion on the
+  instruments that need calibrating, so a library of observed spectra falls far short and is
+  refused, naming the alternatives. `example-data/Stellar-HeLa-GPF.blib` is such a library:
+  its `RefSpectraPeakAnnotations` table is empty, only 0.02% of its peaks are named, and
+  running the Python implementation against it yields 7.9M pseudo-matches from a single file
+  and a model that reduces the spread by 2.2%.
+
+The 80% threshold leaves room for ions MARS does not compute, such as neutral losses, and
+nothing more: the two kinds of library are not close.
+
+### Osprey results
+
+[Osprey](https://github.com/maccoss/osprey) writes its search result as a `.blib` that can be
+handed straight to `--library`:
+
+```bash
+mars calibrate --mzml-dir runs/ --library osprey.blib
+```
+
+Its peaks are fragment m/z copied from the search library, so for a predicted library (Carafe or
+DIA-NN, say) they are theoretical, but it writes no peak annotations. That is the case the
+section above handles. On a 21,340-precursor Stellar result all 333,198 peaks were named, the
+worst of them 0.11 ppm from its ion.
+
+A result searched against a library of *observed* spectra carries their observed m/z
+instead, and is refused like any other.
+
+### Elution windows
+
+Each entry is matched only in spectra inside its elution window, taken from the first of
+these the library has:
+
+1. **Per-run boundaries** in the `RetentionTimes` table, from the source files that match the
+   mzML being processed. Matched by name the same way as a PRISM report's `File Name`, and
+   widened across every matching run. Osprey writes each run's integration boundaries here.
+2. **The entry's own boundaries**, `startTime` and `endTime` in `RefSpectra`.
+3. **A fixed window** of `--rt-window` either side of the entry's library RT (default
+   0.083 min, five seconds).
+
+BiblioSpec writes the first two for every library, but a library built from DDA searches
+leaves the boundaries NULL or zero, and MARS uses them only where the end is after the start.
+The log says how many entries took their window from each source. A PRISM report's elution
+windows are still the best-supported source when available.
 
 ### No native SQLite
 

@@ -88,7 +88,7 @@ public sealed class LibrarySource
         if (LibraryPath.EndsWith(".blib", StringComparison.OrdinalIgnoreCase))
         {
             log($"Loading BiblioSpec library: {LibraryPath}");
-            return BlibLibraryReader.Load(LibraryPath, RtWindow, log);
+            return BlibLibraryReader.Load(LibraryPath, RtWindow, log, runNames: runNames);
         }
 
         throw new InvalidDataException(
