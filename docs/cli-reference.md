@@ -411,7 +411,7 @@ surface than one model per file.
 | `--mz-shift <Th>` | - | Match at this coarse m/z offset instead of finding it |
 | `--no-anchor` | - | Do not look for a coarse m/z offset before matching |
 | `--max-isolation-window <Th>` | - | Skip spectra with wider isolation windows |
-| `--rt-window <min>` | 0.083 | RT half-window around a `.blib` entry's library RT |
+| `--rt-window <min>` | 0.083 | RT half-window around a `.blib` entry's library RT, for entries the library gives no elution boundaries |
 | `--no-dedupe-library` | off | Keep transitions that repeat across replicates |
 
 ### Model

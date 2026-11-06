@@ -1137,6 +1137,12 @@ table, this yields 7.5M pseudo-fragments and 7.9M matches from a single file, an
 that reduces the spread by 2.2%. MARS refuses this input and names the alternatives
 rather than producing a model from it.
 
+The refusal turns on the peak m/z being observed, not on the missing annotations. An
+unannotated library whose peaks are theoretical - an Osprey result - has every peak land
+within 2 ppm of a b or y ion computed from its sequence, and MARS names the peaks that way
+and reads it. The example library has 0.02% of its peaks there. See
+`docs/spectral-libraries.md`.
+
 A related point: even when annotations exist, `load_blib` recalculates b and y fragment
 m/z from the STRIPPED sequence via `calculate_fragment_mz(stripped, ...)`, discarding
 modifications. Every fragment of a modified peptide that spans the modified residue then

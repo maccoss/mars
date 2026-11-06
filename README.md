@@ -386,9 +386,10 @@ failure.
 ## Which library do I need?
 
 One with **theoretical** fragment m/z. A [Skyline PRISM
-report](Skyline-PRISM-Report/Skyline-PRISM.skyr) is the best-supported source. A `.blib`
-without peak annotations cannot be used and MARS will say so rather than produce a bad
-model. See [docs/spectral-libraries.md](docs/spectral-libraries.md).
+report](Skyline-PRISM-Report/Skyline-PRISM.skyr) is the best-supported source. An Osprey
+result `.blib` works as it is. A `.blib` of observed spectra without peak annotations cannot
+be used, and MARS will say so rather than produce a bad model. See
+[docs/spectral-libraries.md](docs/spectral-libraries.md).
 
 ## A note on reproducibility
 
